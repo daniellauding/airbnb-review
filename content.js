@@ -89,19 +89,28 @@
            document.querySelector('#thread_panel') || null;
   }
 
-  // First names of the current guest(s), used to attribute each message.
+  // First names of the current guest(s): from the thread header AND the
+  // "Name · Booker" profile buttons inside the thread (host has neither).
   function guestFirstNames() {
-    return new Set(
-      scrapeGuestFromThread()
-        .split(/\s+and\s+|,\s*/)
-        .map((s) => s.trim().split(/\s+/)[0].toLowerCase())
-        .filter(Boolean)
-    );
+    const names = new Set();
+    scrapeGuestFromThread().split(/\s+and\s+|,\s*/).forEach((s) => {
+      const f = s.trim().split(/\s+/)[0].toLowerCase();
+      if (f) names.add(f);
+    });
+    const list = threadPanel() || document;
+    list.querySelectorAll('[data-testid="message-thread-profile-link"][aria-label],[aria-label*="· Booker"]')
+      .forEach((el) => {
+        const lbl = el.getAttribute("aria-label") || "";
+        const mm = lbl.match(/^(.+?)\s[·•]\s/);
+        const nm = (mm ? mm[1] : lbl).trim().split(/\s+/)[0].toLowerCase();
+        if (nm && nm.length > 1 && !/booker|guest|host/.test(nm)) names.add(nm);
+      });
+    return names;
   }
 
-  // Primary: each message row exposes an aria-label like
-  //   "Feb 22. Marcela sent Hi, Daniel...Thanks Marcela . Sent Feb 22, 10:47 PM"
-  // which gives us sender + text directly, so attribution is exact.
+  // Each message row exposes an aria-label like
+  //   "Feb 22. Marcela sent Hi Daniel... . Sent Feb 22, 10:47 PM. Read by ..."
+  // Parse sender + text from it, so attribution is exact.
   function scrapeThreadDOM() {
     const list = threadPanel();
     if (!list) return [];
@@ -110,17 +119,22 @@
     for (const row of list.querySelectorAll('[role="group"][data-item-id]')) {
       let label = (row.getAttribute("aria-label") || "").trim();
       if (!label) continue;
-      label = label.replace(/^Most Recent Message\.\s*/i, "");
-      label = label.replace(/^(?:\w{3,9}(?:\s\d{1,2})?|\w+day|today|yesterday)\.\s+/i, "");
-      const m = label.match(/^(.+?)\s+sent\s+([\s\S]*?)\.?\s+Sent\s+.*$/i);
+      const readByHost = /\.\s*Read by /i.test(label); // only the host's sent messages show "Read by"
+      label = label
+        .replace(/^Most Recent Message\.\s*/i, "")
+        .replace(/\.\s*Read by .*$/i, "")
+        .replace(/\.\s*Has Reactions\.?\s*$/i, "")
+        .replace(/\.?\s*Sent\s+[^.]*\.?\s*$/i, "")
+        .replace(/^(?:[A-Za-zÀ-ÿ]{2,9}(?:\s\d{1,2})?|\w+day|today|yesterday)\.\s+/i, "");
+      const m = label.match(/^(.{1,40}?)\ssent\s([\s\S]+)$/i);
       if (!m) continue;
       const sender = m[1].trim();
       let text = m[2].trim();
-      if (/airbnb service|airbnb$/i.test(sender)) continue;
-      if (/description not available|^a picture$|^an image$/i.test(text)) continue; // cards / photos
-      text = redact(text).replace(/\s*\.\s*/g, ". ").trim();
+      if (/^airbnb\b|airbnb service/i.test(sender)) continue;
+      if (/description not available|^a (picture|photo|image)$|^an image$/i.test(text)) continue;
+      text = redact(text).replace(/\s*\.\s*/g, ". ").replace(/\s{2,}/g, " ").trim();
       if (!text) continue;
-      const who = guests.has(sender.toLowerCase()) ? "guest" : "host";
+      const who = guests.has(sender.toLowerCase()) ? "guest" : (readByHost ? "host" : "host");
       const last = turns[turns.length - 1];
       if (last && last.who === who) last.text += "\n" + text;
       else turns.push({ who, text });
@@ -163,27 +177,36 @@
   }
 
   // ---------- Persistence (survives Airbnb's client-side navigation) ----------
-  async function getSavedThread() {
-    try { return (await chrome.storage.local.get("arh_thread")).arh_thread || null; }
-    catch { return null; }
-  }
-  async function saveThread(turns, guest) {
-    const rec = { turns: turns || [], guest: guest || "", ts: Date.now(), url: location.href };
-    try { await chrome.storage.local.set({ arh_thread: rec }); } catch {}
-    return rec;
-  }
-  // The guest name only appears on the intro step — persist it for every later step.
-  async function getSavedGuest() {
-    try { return (await chrome.storage.local.get("arh_guest")).arh_guest || ""; }
-    catch { return ""; }
-  }
-  async function saveGuest(name) {
-    if (!name) return;
-    try { await chrome.storage.local.set({ arh_guest: name }); } catch {}
-  }
   function fmtTime(ts) {
     try { return new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); }
     catch { return ""; }
+  }
+
+  // ---------- Per-guest sessions (juggle several reviews at once) ----------
+  // Each session = { guest, turns:[], flow:{cats}, drafts:{public,private}|null, ts }.
+  const keyOf = (guest) => (guest || "").trim().toLowerCase().replace(/\s+/g, " ") || "unknown";
+  function blankSession(guest) { return { guest: guest || "", turns: [], flow: { cats: {} }, drafts: null, ts: Date.now() }; }
+  async function getSessions() {
+    try { return (await chrome.storage.local.get("arh_sessions")).arh_sessions || {}; }
+    catch { return {}; }
+  }
+  async function setSessions(s) { try { await chrome.storage.local.set({ arh_sessions: s }); } catch {} }
+  async function getActiveKey() {
+    try { return (await chrome.storage.local.get("arh_active")).arh_active || ""; }
+    catch { return ""; }
+  }
+  async function setActiveKey(k) { try { await chrome.storage.local.set({ arh_active: k }); } catch {} }
+  async function saveSession(sess) {
+    const all = await getSessions();
+    all[keyOf(sess.guest)] = { ...sess, ts: Date.now() };
+    await setSessions(all);
+    await setActiveKey(keyOf(sess.guest));
+  }
+  async function deleteSessionKey(k) {
+    const all = await getSessions();
+    delete all[k];
+    await setSessions(all);
+    if ((await getActiveKey()) === k) await setActiveKey(Object.keys(all)[0] || "");
   }
 
   // ---------- Read the host's own choices in the multi-step review flow ----------
@@ -226,19 +249,12 @@
     return { category: categoryOf(question), question, selected: [...new Set(selected)], notes };
   }
 
-  async function getFlow() {
-    try { return (await chrome.storage.local.get("arh_flow")).arh_flow || { cats: {} }; }
-    catch { return { cats: {} }; }
-  }
-  async function mergeStep(step) {
-    const flow = await getFlow();
+  function mergeStepInto(flow, step) {
     if (!flow.cats) flow.cats = {};
     const c = flow.cats[step.category] || { items: [], note: "" };
     c.items = [...new Set([...(c.items || []), ...step.selected])];
     if (step.notes.length) c.note = step.notes.join(" / ");
     flow.cats[step.category] = c;
-    flow.ts = Date.now();
-    try { await chrome.storage.local.set({ arh_flow: flow }); } catch {}
     return flow;
   }
   function flowToText(flow) {
@@ -298,6 +314,11 @@
       </div>
 
       <div id="arh-step" class="arh-step" hidden></div>
+
+      <div id="arh-chipsrow" class="arh-chipsrow" hidden>
+        <div id="arh-chips" class="arh-chips"></div>
+        <button id="arh-clearall" class="arh-clearall" type="button" title="Remove all saved guests">Clear all</button>
+      </div>
 
       <div class="arh-sec">
         <div class="arh-sech">1 · Guest</div>
@@ -375,7 +396,55 @@
 
   // ---------- Conversation preview (chat bubbles) ----------
   let threadTurns = [];
+  let session = blankSession("");
   const escHTML = (s) => s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+
+  function renderChips(sessions, activeKey) {
+    const row = $("#arh-chipsrow"), box = $("#arh-chips");
+    const keys = Object.keys(sessions);
+    if (!keys.length) { row.hidden = true; box.innerHTML = ""; return; }
+    box.innerHTML = keys.map((k) => {
+      const s = sessions[k];
+      const name = escHTML((s.guest || k).split(/\s+/)[0]);
+      const badge = s.drafts ? "✓" : (s.turns && s.turns.length ? String(s.turns.length) : "");
+      return `<span class="arh-chip${k === activeKey ? " on" : ""}">` +
+        `<button class="arh-chip-name" data-switch="${encodeURIComponent(k)}">${name}${badge ? `<span class="arh-chip-n">${badge}</span>` : ""}</button>` +
+        `<button class="arh-chip-x" data-del="${encodeURIComponent(k)}" title="Remove ${name}">×</button></span>`;
+    }).join("");
+    row.hidden = false;
+  }
+
+  // Load the active session's context into the panel (used when switching chips).
+  async function loadActiveSession() {
+    const all = await getSessions();
+    let ak = await getActiveKey();
+    if (!all[ak]) ak = Object.keys(all)[0] || "";
+    await setActiveKey(ak);
+    session = all[ak] ? { ...all[ak], flow: all[ak].flow || { cats: {} } } : blankSession("");
+    $("#arh-guest").value = session.guest || "";
+    $("#arh-context").value = "";
+    renderChat(session.turns || []);
+    upsertFlowBlock(flowToText(session.flow || { cats: {} }));
+    if (session.drafts) render(session.drafts); else results.innerHTML = "";
+    renderChips(all, ak);
+    setCapHint(session.turns && session.turns.length ? `${session.guest || "Guest"} · ${session.turns.length} messages` : "");
+  }
+
+  function attachChipHandlers() {
+    $("#arh-chips").addEventListener("click", async (e) => {
+      const del = e.target.closest("[data-del]");
+      const sw = e.target.closest("[data-switch]");
+      if (del) { await deleteSessionKey(decodeURIComponent(del.dataset.del)); await loadActiveSession(); return; }
+      if (sw) { await setActiveKey(decodeURIComponent(sw.dataset.switch)); await loadActiveSession(); }
+    });
+    $("#arh-clearall").addEventListener("click", async () => {
+      try { await chrome.storage.local.remove(["arh_sessions", "arh_active"]); } catch {}
+      session = blankSession("");
+      $("#arh-guest").value = ""; $("#arh-context").value = "";
+      renderChat([]); results.innerHTML = ""; renderChips({}, "");
+      setCapHint("Removed all saved guests.");
+    });
+  }
   function renderChat(turns) {
     threadTurns = Array.isArray(turns) ? turns : [];
     const box = $("#arh-chat");
@@ -419,55 +488,56 @@
     settings.hidden = true;
     card.hidden = false;
 
-    // Guest name: scrape (intro step only) -> otherwise the saved name.
-    if (!$("#arh-guest").value) {
-      const scraped = scrapeGuest();
-      if (scraped) { $("#arh-guest").value = scraped; saveGuest(scraped); }
-      else { $("#arh-guest").value = await getSavedGuest(); }
+    // Pick the session for this page's guest; fall back to the active one.
+    const all = await getSessions();
+    const pageGuest = scrapeGuest(); // header on a thread, intro on the review page
+    let ak;
+    if (pageGuest) {
+      ak = keyOf(pageGuest);
+      session = all[ak] ? { ...all[ak], guest: all[ak].guest || pageGuest, flow: all[ak].flow || { cats: {} } } : blankSession(pageGuest);
+    } else {
+      ak = await getActiveKey();
+      if (!all[ak]) ak = Object.keys(all)[0] || "";
+      session = all[ak] ? { ...all[ak], flow: all[ak].flow || { cats: {} } } : blankSession("");
     }
+    await setActiveKey(ak);
+    $("#arh-guest").value = session.guest || pageGuest || "";
+    $("#arh-context").value = "";
 
-    // Conversation: capture live on a thread; elsewhere reuse the last captured thread.
     if (onMessages()) {
       const turns = scrapeThread();
-      renderChat(turns);
-      if (turns.length) {
-        const guest = $("#arh-guest").value.trim() || scrapeGuest();
-        await saveThread(turns, guest);
-        setCapHint(`Captured ${turns.length} messages`);
-      }
+      if (turns.length) { session.turns = turns; setCapHint(`Captured ${turns.length} messages`); }
+      renderChat(session.turns || []);
     } else {
-      const saved = await getSavedThread();
-      if (saved && saved.turns && saved.turns.length) {
-        renderChat(saved.turns);
-        setCapHint(`Thread from ${fmtTime(saved.ts)}${saved.guest ? " · " + saved.guest : ""} · ${saved.turns.length} messages`);
-      } else {
-        renderChat([]);
+      const step = scrapeStep();
+      if (step.selected.length || step.notes.length) {
+        mergeStepInto(session.flow, step);
+        setCapHint(`Read "${step.category}" · ${Object.keys(session.flow.cats).length} steps saved`);
       }
+      renderChat(session.turns || []);
     }
+
+    upsertFlowBlock(flowToText(session.flow || { cats: {} }));
+    if (session.drafts) render(session.drafts); else results.innerHTML = "";
+
+    if (session.guest || (session.turns && session.turns.length) || Object.keys(session.flow.cats).length) {
+      await saveSession(session);
+    }
+    renderChips(await getSessions(), keyOf(session.guest));
 
     $("#arh-readstep").style.display = onMessages() ? "none" : "";
     $("#arh-capture").textContent = onMessages() ? "Capture thread" : "Reload thread";
-
     const stepEl = $("#arh-step");
     if (onMessages()) {
       stepEl.textContent = "Message thread — capture the conversation below";
       stepEl.hidden = false;
     } else {
-      const step = scrapeStep();
-      let flow = await getFlow();
-      if (step.selected.length || step.notes.length) {
-        flow = await mergeStep(step);
-        setCapHint(`Read "${step.category}" · ${Object.keys(flow.cats).length} steps saved`);
-      }
-      if (flow.cats && Object.keys(flow.cats).length) upsertFlowBlock(flowToText(flow));
-      if (step.category && step.category !== "Other") {
-        stepEl.textContent = `Airbnb step: ${step.category}`;
-        stepEl.hidden = false;
-      } else {
-        stepEl.hidden = true;
-      }
+      const cat = scrapeStep().category;
+      if (cat && cat !== "Other") { stepEl.textContent = `Airbnb step: ${cat}`; stepEl.hidden = false; }
+      else stepEl.hidden = true;
     }
   }
+  attachChipHandlers();
 
   $("#arh-fab").addEventListener("click", () => {
     const isOpen = !card.hidden || !settings.hidden;
@@ -484,36 +554,40 @@
       setCapHint(`Nothing selected on "${step.category}" yet — make your choices on the page first.`);
       return;
     }
-    const flow = await mergeStep(step);
-    if (!$("#arh-guest").value) $("#arh-guest").value = scrapeGuest();
-    upsertFlowBlock(flowToText(flow));
-    setCapHint(`Read "${step.category}" (${step.selected.length} selected) · ${Object.keys(flow.cats).length} steps saved`);
+    if (!session.guest) session.guest = $("#arh-guest").value.trim() || scrapeGuest();
+    mergeStepInto(session.flow, step);
+    upsertFlowBlock(flowToText(session.flow));
+    await saveSession(session);
+    renderChips(await getSessions(), keyOf(session.guest));
+    setCapHint(`Read "${step.category}" (${step.selected.length} selected) · ${Object.keys(session.flow.cats).length} steps saved`);
   });
 
+  // "Clear" removes just THIS guest's session (chips keep the rest).
   $("#arh-clearctx").addEventListener("click", async () => {
-    try { await chrome.storage.local.remove(["arh_thread", "arh_flow", "arh_guest"]); } catch {}
-    upsertFlowBlock("");
+    await deleteSessionKey(keyOf(session.guest));
+    session = blankSession("");
+    upsertFlowBlock(""); $("#arh-context").value = "";
     $("#arh-guest").value = "";
-    renderChat([]);
-    setCapHint("Cleared (name, thread & step choices).");
+    renderChat([]); results.innerHTML = "";
+    renderChips(await getSessions(), await getActiveKey());
+    setCapHint("Removed this guest.");
   });
 
   $("#arh-capture").addEventListener("click", async () => {
     if (onMessages()) {
       const turns = scrapeThread();
       if (!turns.length) { setCapHint("No thread found to capture on this page."); return; }
+      if (!session.guest) session.guest = $("#arh-guest").value.trim() || scrapeGuest();
+      session.turns = turns;
       renderChat(turns);
-      const guest = $("#arh-guest").value.trim() || scrapeGuest();
-      const rec = await saveThread(turns, guest);
-      setCapHint(`Captured ${turns.length} messages ${fmtTime(rec.ts)} (saved — works on the review page)`);
+      await saveSession(session);
+      renderChips(await getSessions(), keyOf(session.guest));
+      setCapHint(`Captured ${turns.length} messages (saved for ${session.guest || "guest"})`);
     } else {
-      const saved = await getSavedThread();
-      if (saved && saved.turns && saved.turns.length) {
-        renderChat(saved.turns);
-        setCapHint(`Loaded ${saved.turns.length} messages from ${fmtTime(saved.ts)}`);
-      } else {
-        setCapHint("No thread captured yet — open a message thread and click Capture thread.");
-      }
+      renderChat(session.turns || []);
+      setCapHint(session.turns && session.turns.length
+        ? `Loaded ${session.turns.length} messages for ${session.guest || "guest"}`
+        : "No thread captured for this guest — open the message thread and Capture.");
     }
   });
 
@@ -527,8 +601,19 @@
     wrap.dataset.val = b.dataset.val;
   });
 
-  // Persist a manually typed guest name so later steps keep it.
-  $("#arh-guest").addEventListener("change", (e) => saveGuest(e.target.value.trim()));
+  // Renaming the guest re-keys this session (so chips follow the name).
+  $("#arh-guest").addEventListener("change", async (e) => {
+    const name = e.target.value.trim();
+    if (!name) return;
+    const oldKey = keyOf(session.guest);
+    session.guest = name;
+    const all = await getSessions();
+    if (oldKey && all[oldKey] && oldKey !== keyOf(name)) delete all[oldKey];
+    all[keyOf(name)] = { ...session, ts: Date.now() };
+    await setSessions(all);
+    await setActiveKey(keyOf(name));
+    renderChips(all, keyOf(name));
+  });
 
   // ---------- Settings ----------
   const DEFAULTS = {
@@ -716,6 +801,10 @@
       const secs = ((Date.now() - t0) / 1000).toFixed(0);
       finish(() => setStatus(`Done in ${secs}s · ${resp.used.endpoint.replace(/^https?:\/\//, "")} · ${resp.used.model}`));
       render(resp.data);
+      // Persist the drafts on this guest's session so they survive navigation.
+      if (!session.guest) session.guest = payload.guest;
+      session.drafts = resp.data;
+      saveSession(session).then(async () => renderChips(await getSessions(), keyOf(session.guest)));
     });
   });
 

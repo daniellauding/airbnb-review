@@ -43,6 +43,22 @@ textarea.arh-in { resize: vertical; }
   padding: 7px 11px; font-size: 12px; font-weight: 600; margin-bottom: 12px;
 }
 
+/* Guest chips (one session per guest) */
+.arh-chipsrow { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.arh-chips { display: flex; flex-wrap: wrap; gap: 6px; flex: 1; min-width: 0; }
+.arh-chip { display: inline-flex; align-items: center; background: #f2f2f2; border: 1px solid #e2e2e2; border-radius: 999px; overflow: hidden; }
+.arh-chip.on { background: #FF385C; border-color: #FF385C; }
+.arh-chip-name { background: none; border: none; cursor: pointer; font: inherit; font-size: 12px; padding: 4px 4px 4px 11px; color: #333; }
+.arh-chip.on .arh-chip-name { color: #fff; font-weight: 600; }
+.arh-chip-n { opacity: .6; margin-left: 5px; font-size: 10px; }
+.arh-chip.on .arh-chip-n { opacity: .85; }
+.arh-chip-x { background: none; border: none; cursor: pointer; font-size: 15px; line-height: 1; padding: 3px 9px 3px 4px; color: #aaa; }
+.arh-chip-x:hover { color: #c0143c; }
+.arh-chip.on .arh-chip-x { color: #ffd0d8; }
+.arh-chip.on .arh-chip-x:hover { color: #fff; }
+.arh-clearall { flex: 0 0 auto; background: none; border: none; cursor: pointer; font: inherit; font-size: 11px; color: #999; text-decoration: underline; padding: 2px; }
+.arh-clearall:hover { color: #c0143c; }
+
 /* Sections */
 .arh-sec { padding: 12px 0; border-top: 1px solid #f0f0f0; }
 .arh-sec:first-of-type { border-top: none; padding-top: 2px; }
