@@ -1,0 +1,53 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  body { width: 300px; font-family: -apple-system, BlinkMacSystemFont, sans-serif; padding: 14px; margin: 0; color: #222; }
+  h1 { font-size: 15px; margin: 0 0 4px; }
+  p.sub { font-size: 11px; color: #777; margin: 0 0 12px; }
+  label { display: block; font-size: 12px; font-weight: 600; color: #555; margin: 10px 0 4px; }
+  input, textarea, select { width: 100%; box-sizing: border-box; border: 1px solid #ddd; border-radius: 8px; padding: 8px; font-size: 13px; font-family: inherit; background: #fff; }
+  textarea { resize: vertical; }
+  button { width: 100%; margin-top: 12px; background: #FF385C; color: #fff; border: none; border-radius: 9px; padding: 10px; font-size: 14px; font-weight: 600; cursor: pointer; }
+  button:hover { background: #e11f45; }
+  .ok { font-size: 11px; color: #2a8; min-height: 14px; margin-top: 6px; }
+  .hint { font-size: 11px; color: #888; margin-top: 12px; line-height: 1.45; }
+  code { background: #f2f2f2; padding: 1px 4px; border-radius: 4px; }
+  .row { display: flex; justify-content: space-between; font-size: 12px; }
+</style>
+</head>
+<body>
+  <h1>Review Helper</h1>
+  <p class="sub">Bring your own model — local or cloud.</p>
+
+  <label>Provider</label>
+  <select id="provider">
+    <option value="ollama">Ollama (local)</option>
+    <option value="openai">OpenAI</option>
+    <option value="openai-compatible">OpenAI-compatible</option>
+    <option value="anthropic">Anthropic</option>
+    <option value="gemini">Google Gemini</option>
+  </select>
+
+  <label>Endpoint / base URL (blank = provider default)</label>
+  <textarea id="endpoints" rows="2"></textarea>
+
+  <label>Model</label>
+  <input id="model" type="text" placeholder="e.g. qwen2.5:14b, gpt-4o-mini, gemini-1.5-flash">
+
+  <label>API key (optional; stored locally)</label>
+  <input id="apikey" type="password" placeholder="only if your endpoint needs auth">
+
+  <label class="row"><span>Creativity (temperature)</span><b id="tempv">0.90</b></label>
+  <input id="temp" type="range" min="0" max="100" value="90">
+
+  <button id="save">Save</button>
+  <div class="ok" id="ok"></div>
+
+  <div class="hint" id="privacy"></div>
+  <div class="hint">Open an Airbnb <code>/hosting/reviews/…</code> or message page, then click the pen button (bottom-right) to draft a review.</div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

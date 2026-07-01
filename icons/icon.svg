@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <rect width="128" height="128" rx="28" fill="#FF385C"/>
+  <!-- pencil -->
+  <g transform="rotate(45 64 64)">
+    <rect x="55" y="30" width="18" height="52" rx="3" fill="#fff"/>
+    <rect x="55" y="30" width="18" height="10" rx="3" fill="#ffd0d8"/>
+    <polygon points="55,82 73,82 64,98" fill="#fff"/>
+    <polygon points="60,90 68,90 64,98" fill="#3a2b2b"/>
+  </g>
+  <!-- star -->
+  <path d="M97 90 l3.4 6.9 7.6 1.1 -5.5 5.4 1.3 7.6 -6.8 -3.6 -6.8 3.6 1.3 -7.6 -5.5 -5.4 7.6 -1.1z" fill="#fff"/>
+</svg>

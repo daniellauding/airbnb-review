@@ -1,0 +1,110 @@
+#arh-panel { position: fixed; right: 20px; bottom: 20px; z-index: 2147483647; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+
+#arh-fab {
+  width: 52px; height: 52px; border-radius: 50%; background: #FF385C; color: #fff;
+  display: flex; align-items: center; justify-content: center; font-size: 22px; cursor: pointer;
+  box-shadow: 0 6px 18px rgba(0,0,0,.28); margin-left: auto;
+}
+#arh-fab:hover { transform: scale(1.05); }
+
+#arh-card, .arh-card {
+  width: 366px; max-height: 82vh; overflow-y: auto; margin-top: 12px;
+  background: #fff; color: #222; border-radius: 16px; padding: 16px;
+  box-shadow: 0 12px 40px rgba(0,0,0,.25); border: 1px solid #eee;
+}
+
+.arh-head { display: flex; align-items: center; gap: 6px; margin-bottom: 10px; font-size: 15px; }
+.arh-head strong { font-size: 15px; }
+.arh-sp { flex: 1; }
+.arh-head button { background: none; border: none; cursor: pointer; font-size: 15px; padding: 4px; border-radius: 6px; color: #666; }
+.arh-head button:hover { background: #f2f2f2; }
+.arh-icon { display: inline-flex; align-items: center; justify-content: center; }
+.arh-icon svg { display: block; }
+
+.arh-spin {
+  display: inline-block; width: 11px; height: 11px; vertical-align: -1px; margin-right: 6px;
+  border: 2px solid #f3c6d0; border-top-color: #FF385C; border-radius: 50%;
+  animation: arh-rot .7s linear infinite;
+}
+@keyframes arh-rot { to { transform: rotate(360deg); } }
+
+.arh-l { display: block; font-size: 12px; font-weight: 600; color: #555; margin: 8px 0 4px; }
+.arh-in {
+  width: 100%; box-sizing: border-box; border: 1px solid #ddd; border-radius: 8px;
+  padding: 8px; font-size: 13px; font-family: inherit; background: #fff; color: #222;
+}
+textarea.arh-in { resize: vertical; }
+
+.arh-full { width: 100%; accent-color: #FF385C; }
+
+/* Step indicator pill */
+.arh-step {
+  background: #fff0f3; color: #c0143c; border: 1px solid #ffd0d8; border-radius: 9px;
+  padding: 7px 11px; font-size: 12px; font-weight: 600; margin-bottom: 12px;
+}
+
+/* Sections */
+.arh-sec { padding: 12px 0; border-top: 1px solid #f0f0f0; }
+.arh-sec:first-of-type { border-top: none; padding-top: 2px; }
+.arh-sech { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: #999; margin-bottom: 9px; }
+.arh-sechhint { font-weight: 400; text-transform: none; letter-spacing: 0; color: #bbb; }
+
+/* Segmented controls */
+.arh-seg { display: flex; gap: 5px; }
+.arh-segb {
+  flex: 1; padding: 7px 4px; font-size: 12px; font-family: inherit; border: 1px solid #dcdcdc;
+  background: #fff; color: #444; border-radius: 9px; cursor: pointer; white-space: nowrap;
+  transition: background .12s, border-color .12s, color .12s;
+}
+.arh-segb:hover { border-color: #FF385C; }
+.arh-segb.on { background: #FF385C; color: #fff; border-color: #FF385C; font-weight: 600; }
+
+.arh-rate { margin: 9px 0; }
+.arh-ratel { display: block; font-size: 12px; color: #444; margin-bottom: 5px; }
+.arh-seg-rate .arh-segb { padding: 5px 2px; font-size: 11px; }
+
+.arh-field { display: flex; align-items: center; gap: 10px; margin: 9px 0; }
+.arh-fl { width: 48px; flex: 0 0 auto; font-size: 12px; color: #444; }
+.arh-field .arh-seg { flex: 1; }
+
+.arh-gen {
+  width: 100%; margin-top: 12px; background: #FF385C; color: #fff; border: none;
+  border-radius: 10px; padding: 11px; font-size: 14px; font-weight: 600; cursor: pointer;
+}
+.arh-gen:hover { background: #e11f45; }
+.arh-gen:disabled { opacity: .7; cursor: default; }
+
+.arh-check { display: flex; align-items: center; gap: 7px; font-size: 12px; color: #444; margin: 10px 0 2px; cursor: pointer; }
+.arh-check input { accent-color: #FF385C; width: 15px; height: 15px; }
+
+.arh-status { font-size: 11px; color: #666; margin: 8px 0; min-height: 14px; }
+.arh-status.err { color: #c0392b; }
+
+.arh-group { font-size: 12px; font-weight: 700; color: #333; margin: 12px 0 6px; text-transform: uppercase; letter-spacing: .04em; }
+.arh-opt { border: 1px solid #eee; border-radius: 10px; padding: 10px; margin-bottom: 8px; background: #fafafa; }
+.arh-opt-t { font-size: 13px; line-height: 1.45; color: #222; white-space: pre-wrap; }
+.arh-optbtns { display: flex; gap: 6px; margin-top: 8px; }
+.arh-copy, .arh-use {
+  background: #222; color: #fff; border: none; border-radius: 7px;
+  padding: 5px 12px; font-size: 12px; cursor: pointer;
+}
+.arh-copy:hover, .arh-use:hover { background: #000; }
+.arh-use { background: #FF385C; }
+.arh-use:hover { background: #e11f45; }
+
+.arh-two { display: flex; gap: 10px; }
+.arh-two > div { flex: 1; }
+
+.arh-caprow { display: flex; flex-direction: column; gap: 6px; align-items: stretch; margin: 8px 0 4px; }
+.arh-capbtns { display: flex; gap: 6px; }
+.arh-capbtns .arh-mini { flex: 1; }
+.arh-mini {
+  background: #f2f2f2; color: #222; border: 1px solid #e0e0e0; border-radius: 7px;
+  padding: 5px 8px; font-size: 12px; cursor: pointer; white-space: nowrap;
+}
+.arh-mini:hover { background: #e8e8e8; }
+.arh-mini-x { flex: 0 0 auto !important; }
+.arh-caphint { font-size: 11px; color: #FF385C; min-height: 14px; margin-bottom: 4px; }
+
+.arh-hint { font-size: 11px; color: #888; margin-top: 10px; line-height: 1.4; }
+.arh-hint code { background: #f2f2f2; padding: 1px 4px; border-radius: 4px; }
