@@ -169,10 +169,11 @@ const sysOf = (m) => (m.find((x) => x.role === "system") || {}).content || "";
 const userOf = (m) => (m.find((x) => x.role === "user") || {}).content || "";
 
 // Ollama native /api/chat
-async function callOllama({ base, model, messages, temperature, apiKey }) {
+async function callOllama({ base, model, messages, temperature, apiKey, plain }) {
+  const body = { model, messages, stream: false, options: { temperature } };
+  if (!plain) body.format = "json";
   const data = await postJSON(base.replace(/\/+$/, "") + "/api/chat",
-    apiKey ? { Authorization: "Bearer " + apiKey } : {},
-    { model, messages, stream: false, format: "json", options: { temperature } });
+    apiKey ? { Authorization: "Bearer " + apiKey } : {}, body);
   return data.message?.content || "";
 }
 
@@ -193,12 +194,12 @@ async function callAnthropic({ base, model, messages, temperature, apiKey }) {
 }
 
 // Google Gemini generateContent
-async function callGemini({ base, model, messages, temperature, apiKey }) {
+async function callGemini({ base, model, messages, temperature, apiKey, plain }) {
   const url = `${base.replace(/\/+$/, "")}/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
   const data = await postJSON(url, {}, {
     systemInstruction: { parts: [{ text: sysOf(messages) }] },
     contents: [{ role: "user", parts: [{ text: userOf(messages) }] }],
-    generationConfig: { temperature, responseMimeType: "application/json" }
+    generationConfig: { temperature, responseMimeType: plain ? "text/plain" : "application/json" }
   });
   return (data.candidates?.[0]?.content?.parts || []).map((p) => p.text || "").join("") || "";
 }
@@ -311,4 +312,77 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     sendResponse({ ok: false, error: errors.join("  |  ") });
   })();
   return true; // keep channel open for async response
+});
+
+// ---------- Cleaning schedule ----------
+// Parse an Airbnb iCal export into reservation events.
+function parseICal(text) {
+  const events = [];
+  const blocks = text.split(/BEGIN:VEVENT/).slice(1);
+  for (const b of blocks) {
+    const body = b.split(/END:VEVENT/)[0].replace(/\r/g, "");
+    const start = (body.match(/DTSTART[^:]*:(\d{8})/) || [])[1];
+    const end = (body.match(/DTEND[^:]*:(\d{8})/) || [])[1];
+    const summary = ((body.match(/SUMMARY:(.*)/) || [])[1] || "").trim();
+    if (!start || !end) continue;
+    if (/not available/i.test(summary)) continue; // blocked, not a guest stay
+    const iso = (d) => `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}`;
+    events.push({ start: iso(start), end: iso(end), name: /reserved/i.test(summary) ? "" : summary });
+  }
+  return events;
+}
+
+function buildCleaningEmail(p) {
+  const lang = p.lang === "sv" ? "sv" : "en";
+  const time = (p.defTime || "13:30").trim();
+  const lines = (p.slots || []).map((s) => {
+    const nx = s.next
+      ? (lang === "sv" ? ` (nästa gäst in ${s.next}${s.sameDay ? " — SAMMA DAG, städ på förmiddagen" : ""})`
+        : ` (next guest in ${s.next}${s.sameDay ? " — SAME DAY, morning clean" : ""})`)
+      : "";
+    const who = s.guest ? ` [${s.guest}]` : "";
+    return `- ${s.clean} kl. ${time}${nx}${who}`;
+  }).join("\n");
+  const sys = lang === "sv"
+    ? "Du skriver ett kort, vänligt och tydligt mejl på svenska från en Airbnb-värd till sitt städföretag för att boka städtider. Behåll ALLA datum i listan — sammanfatta inte bort dem. Returnera ENDAST mejltexten (ämnesrad + brödtext), inga förklaringar."
+    : "You write a short, friendly, clear email in English from an Airbnb host to their cleaning company to book cleaning slots. Keep EVERY date in the list — do not summarise them away. Return ONLY the email text (subject line + body), no explanations.";
+  const user = lang === "sv"
+    ? `Standardtid om inget annat anges: ${time}. Föreslagna städtider (städ sker på utcheckningsdagen):\n${lines}\n\nSkriv mejlet: kort hälsning, be dem boka/bekräfta dessa tider, och flagga tydligt de som är SAMMA DAG (gäst ut och ny in samma dag) eftersom de är tighta.`
+    : `Default time unless noted: ${time}. Proposed cleaning slots (cleaning happens on the checkout day):\n${lines}\n\nWrite the email: brief greeting, ask them to book/confirm these, and clearly flag the SAME DAY ones (guest out and new guest in on the same day) as tight turnarounds.`;
+  return [{ role: "system", content: sys }, { role: "user", content: user }];
+}
+
+chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+  if (msg.type === "ical") {
+    (async () => {
+      try {
+        const res = await fetch(msg.url);
+        if (!res.ok) return sendResponse({ ok: false, error: `HTTP ${res.status}` });
+        const text = await res.text();
+        sendResponse({ ok: true, events: parseICal(text) });
+      } catch (e) { sendResponse({ ok: false, error: String(e.message || e) }); }
+    })();
+    return true;
+  }
+  if (msg.type === "cleaningEmail") {
+    (async () => {
+      const settings = await getSettings();
+      const messages = buildCleaningEmail(msg.payload || {});
+      const adapter = ADAPTERS[settings.provider] || callOllama;
+      const bases = settings.provider === "ollama"
+        ? settings.endpoints
+        : [settings.endpoints[0] || PROVIDER_BASE[settings.provider]].filter(Boolean);
+      const errors = [];
+      for (const base of bases) {
+        try {
+          const raw = await adapter({ base, model: settings.model, messages, temperature: settings.temperature, apiKey: settings.apiKey, plain: true });
+          const text = (raw || "").trim();
+          if (text) return sendResponse({ ok: true, text, used: { endpoint: base, model: settings.model } });
+          errors.push(`${base}: empty`);
+        } catch (e) { errors.push(`${base}: ${String(e.message || e)}`); }
+      }
+      sendResponse({ ok: false, error: errors.join("  |  ") });
+    })();
+    return true;
+  }
 });

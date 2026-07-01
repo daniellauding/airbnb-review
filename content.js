@@ -5,6 +5,7 @@
 
   const $ = (sel, root = document) => root.querySelector(sel);
   const onMessages = () => location.pathname.includes("/hosting/messages/");
+  const onCalendar = () => /\/multicalendar\b|\/calendar\b/.test(location.pathname);
 
   // Minimal inline icons (no emoji) — Feather-style strokes.
   const IC = {
@@ -310,6 +311,47 @@
       `</div>`;
   }
 
+  // ---------- Cleaning schedule (calendar page) ----------
+  const fmtDM = (d) => `${d.getDate()}/${d.getMonth() + 1}`;
+
+  // Scrape reservations off the multicalendar DOM (no URL needed).
+  // Each reservation bar carries an aria-label like
+  // "Checkin on Jun 27, 2026, checkout on Jun 30, 2026." plus a guest label.
+  function scrapeReservations() {
+    const seen = new Map();
+    document.querySelectorAll('[data-testid="reservation-bar"]').forEach((bar) => {
+      let lab = "";
+      bar.querySelectorAll("span").forEach((s) => {
+        if (!lab && /checkin on .+?, checkout on .+?\./i.test(s.textContent)) lab = s.textContent;
+      });
+      const m = lab.match(/checkin on (.+?), checkout on (.+?)\./i);
+      if (!m) return;
+      const ci = new Date(m[1]), co = new Date(m[2]);
+      if (isNaN(ci) || isNaN(co)) return;
+      const key = m[1] + "|" + m[2];
+      const nameEl = bar.querySelector('[data-testid="guest-small-label"]');
+      let name = nameEl ? nameEl.textContent.trim() : "";
+      if (!name) { const img = bar.querySelector("img[alt]"); if (img) name = (img.getAttribute("alt") || "").trim(); }
+      const prev = seen.get(key);
+      if (!prev || (!prev.name && name)) seen.set(key, { checkin: ci, checkout: co, name });
+    });
+    return [...seen.values()].sort((a, b) => a.checkout - b.checkout);
+  }
+
+  // Turn reservations into cleaning slots: clean on each checkout day,
+  // noting when the next guest arrives (same-day = tight turnaround).
+  function cleaningSlots(res) {
+    return res.map((r) => {
+      let next = null;
+      res.forEach((o) => {
+        if (o === r) return;
+        if (o.checkin >= r.checkout && (!next || o.checkin < next.checkin)) next = o;
+      });
+      const sameDay = !!next && next.checkin.getTime() === r.checkout.getTime();
+      return { clean: r.checkout, guest: r.name, next: next ? next.checkin : null, nextGuest: next ? next.name : "", sameDay };
+    });
+  }
+
   // ---------- Panel ----------
   const panel = document.createElement("div");
   panel.id = "arh-panel";
@@ -386,16 +428,40 @@
       <input id="arh-model" class="arh-in" type="text" placeholder="e.g. qwen2.5:14b · gpt-4o-mini · claude-... · gemini-1.5-flash">
       <label class="arh-l">API key <span class="arh-sechhint">optional; stored locally, not synced</span></label>
       <input id="arh-apikey" class="arh-in" type="password" placeholder="only if your endpoint needs auth">
+      <label class="arh-l">iCal URL <span class="arh-sechhint">optional; your Airbnb export feed, for the cleaning schedule</span></label>
+      <input id="arh-ical" class="arh-in" type="text" placeholder="https://www.airbnb.com/calendar/ical/....ics">
       <label class="arh-l">Creativity (temperature): <b id="arh-tempv">0.9</b></label>
       <input type="range" min="0" max="100" value="90" id="arh-temp" class="arh-full">
       <button id="arh-save" class="arh-gen">Save</button>
       <div id="arh-privacy" class="arh-hint"></div>
+    </div>
+
+    <div id="arh-clean" class="arh-card" hidden>
+      <div class="arh-head">
+        <strong>Cleaning schedule</strong>
+        <span class="arh-sp"></span>
+        <button id="arh-cgear" class="arh-icon" title="Settings" aria-label="Settings">${IC.cog}</button>
+        <button id="arh-cx" class="arh-icon" title="Close" aria-label="Close">${IC.x}</button>
+      </div>
+      <div class="arh-step">Read your calendar → cleaning dates + a ready-to-send email</div>
+      <div class="arh-capbtns">
+        <button id="arh-cread" class="arh-mini" type="button">Read calendar</button>
+        <button id="arh-cical" class="arh-mini" type="button" title="Fetch your iCal feed (set the URL in Settings)">Load from iCal</button>
+      </div>
+      <div id="arh-chint" class="arh-caphint"></div>
+      <div class="arh-field"><span class="arh-fl">Time</span><input id="arh-ctime" class="arh-in" type="text" value="13:30" style="flex:1"></div>
+      <div class="arh-field"><span class="arh-fl">Lang</span>${seg("seg-clang", LANGS, 1)}</div>
+      <div id="arh-clist"></div>
+      <button id="arh-cmail" class="arh-gen" type="button" hidden>Draft cleaning email</button>
+      <div id="arh-cstatus" class="arh-status"></div>
+      <div id="arh-cout"></div>
     </div>
   `;
   document.body.appendChild(panel);
 
   const card = $("#arh-card");
   const settings = $("#arh-settings");
+  const clean = $("#arh-clean");
   const statusEl = $("#arh-status");
   const results = $("#arh-results");
 
@@ -560,13 +626,89 @@
   attachChipHandlers();
 
   $("#arh-fab").addEventListener("click", () => {
-    const isOpen = !card.hidden || !settings.hidden;
-    if (isOpen) { card.hidden = true; settings.hidden = true; }
+    const isOpen = !card.hidden || !settings.hidden || !clean.hidden;
+    if (isOpen) { card.hidden = true; settings.hidden = true; clean.hidden = true; }
+    else if (onCalendar()) { openClean(); }
     else { openCard(); }
   });
   $("#arh-x").addEventListener("click", () => (card.hidden = true));
   $("#arh-gear").addEventListener("click", () => { card.hidden = true; loadSettings(); settings.hidden = false; });
-  $("#arh-sx").addEventListener("click", () => { settings.hidden = true; card.hidden = false; });
+  $("#arh-sx").addEventListener("click", () => { settings.hidden = true; if (onCalendar()) clean.hidden = false; else card.hidden = false; });
+
+  // ---------- Cleaning schedule handlers ----------
+  let cleanData = [];
+  function openClean() { settings.hidden = true; card.hidden = true; clean.hidden = false; }
+  function setCleanHint(m) { $("#arh-chint").textContent = m || ""; }
+
+  function renderCleanList(slots) {
+    cleanData = slots;
+    const list = $("#arh-clist");
+    const mail = $("#arh-cmail");
+    if (!slots.length) { list.innerHTML = ""; mail.hidden = true; return; }
+    list.innerHTML = slots.map((s) => {
+      const nxt = s.next
+        ? ` <span class="arh-cnext">→ next in ${fmtDM(s.next)}${s.sameDay ? " · same-day!" : ""}</span>`
+        : ` <span class="arh-cnext">→ no next booking</span>`;
+      return `<div class="arh-crow${s.sameDay ? " arh-csame" : ""}"><b>${fmtDM(s.clean)}</b>${s.guest ? " · " + escHTML(s.guest) : ""}${nxt}</div>`;
+    }).join("");
+    mail.hidden = false;
+  }
+
+  $("#arh-cread").addEventListener("click", () => {
+    const res = scrapeReservations();
+    if (!res.length) { setCleanHint("No reservations found. Open the year view on /multicalendar and scroll so bookings render, then try again."); renderCleanList([]); return; }
+    const slots = cleaningSlots(res);
+    setCleanHint(`Found ${res.length} bookings → ${slots.length} cleaning days.`);
+    renderCleanList(slots);
+  });
+
+  $("#arh-cical").addEventListener("click", async () => {
+    const { arh_ical } = await chrome.storage.local.get("arh_ical");
+    if (!arh_ical) { setCleanHint("No iCal URL saved. Add it in Settings (gear icon)."); return; }
+    setCleanHint("Fetching iCal…");
+    chrome.runtime.sendMessage({ type: "ical", url: arh_ical }, (resp) => {
+      if (chrome.runtime.lastError) return setCleanHint(chrome.runtime.lastError.message);
+      if (!resp || !resp.ok) return setCleanHint("iCal failed: " + (resp && resp.error ? resp.error : "unknown"));
+      const res = (resp.events || []).map((e) => ({ checkin: new Date(e.start), checkout: new Date(e.end), name: e.name || "" }))
+        .filter((r) => !isNaN(r.checkin) && !isNaN(r.checkout))
+        .sort((a, b) => a.checkout - b.checkout);
+      if (!res.length) { setCleanHint("iCal had no reservations."); return renderCleanList([]); }
+      const slots = cleaningSlots(res);
+      setCleanHint(`iCal: ${res.length} bookings → ${slots.length} cleaning days. (Airbnb iCal has no guest names.)`);
+      renderCleanList(slots);
+    });
+  });
+
+  $("#arh-cmail").addEventListener("click", () => {
+    if (!cleanData.length) return;
+    const lang = $("#seg-clang").dataset.val;
+    const defTime = ($("#arh-ctime").value || "13:30").trim();
+    const cstat = $("#arh-cstatus");
+    const cout = $("#arh-cout");
+    const payload = {
+      lang, defTime,
+      slots: cleanData.map((s) => ({
+        clean: fmtDM(s.clean), guest: s.guest || "",
+        next: s.next ? fmtDM(s.next) : "", sameDay: s.sameDay
+      }))
+    };
+    cstat.innerHTML = '<span class="arh-spin"></span> Drafting email…';
+    chrome.runtime.sendMessage({ type: "cleaningEmail", payload }, (resp) => {
+      if (chrome.runtime.lastError) { cstat.textContent = chrome.runtime.lastError.message; return; }
+      if (!resp || !resp.ok || !resp.text) { cstat.textContent = "Failed: " + (resp && resp.error ? resp.error : "no text"); return; }
+      cstat.textContent = "";
+      const enc = encodeURIComponent(resp.text);
+      cout.innerHTML = `<div class="arh-opt"><div class="arh-opt-t">${escHTML(resp.text)}</div>
+        <div class="arh-optbtns"><button class="arh-copy" data-copy="${enc}">Copy</button></div></div>`;
+      cout.querySelector(".arh-copy").addEventListener("click", async (e) => {
+        await navigator.clipboard.writeText(decodeURIComponent(e.target.dataset.copy));
+        e.target.textContent = "Copied"; setTimeout(() => (e.target.textContent = "Copy"), 1200);
+      });
+    });
+  });
+
+  $("#arh-cx").addEventListener("click", () => (clean.hidden = true));
+  $("#arh-cgear").addEventListener("click", () => { clean.hidden = true; loadSettings(); settings.hidden = false; });
 
   $("#arh-readstep").addEventListener("click", async () => {
     const step = scrapeStep();
@@ -660,11 +802,12 @@
   }
   async function loadSettings() {
     const s = await chrome.storage.sync.get(["endpoints", "model", "temperature", "provider"]);
-    const k = await chrome.storage.local.get("arh_apikey");
+    const k = await chrome.storage.local.get(["arh_apikey", "arh_ical"]);
     $("#arh-provider").value = s.provider || "ollama";
     $("#arh-endpoints").value = (s.endpoints && s.endpoints.length ? s.endpoints : DEFAULTS.endpoints).join("\n");
     $("#arh-model").value = s.model || DEFAULTS.model;
     $("#arh-apikey").value = k.arh_apikey || "";
+    $("#arh-ical").value = k.arh_ical || "";
     const t = typeof s.temperature === "number" ? s.temperature : DEFAULTS.temperature;
     $("#arh-temp").value = Math.round(t * 100);
     $("#arh-tempv").textContent = t.toFixed(2);
@@ -701,9 +844,12 @@
       model: $("#arh-model").value.trim() || DEFAULTS.model,
       temperature: (+$("#arh-temp").value) / 100
     });
-    await chrome.storage.local.set({ arh_apikey: $("#arh-apikey").value.trim() });
+    await chrome.storage.local.set({
+      arh_apikey: $("#arh-apikey").value.trim(),
+      arh_ical: $("#arh-ical").value.trim()
+    });
     settings.hidden = true;
-    card.hidden = false;
+    if (onCalendar()) { clean.hidden = false; } else { card.hidden = false; }
     setStatus(granted ? "Settings saved." : "Saved, but host permission was denied.");
   });
 

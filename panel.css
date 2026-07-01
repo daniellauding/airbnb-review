@@ -167,5 +167,12 @@ textarea.arh-in { resize: vertical; }
 .arh-bub.host .arh-chatmore { color: #fff; }
 .arh-bub.guest .arh-chatmore { color: #FF385C; }
 
+/* Cleaning schedule list */
+#arh-clist { display: flex; flex-direction: column; gap: 4px; margin: 6px 0 4px; max-height: 260px; overflow-y: auto; }
+.arh-crow { font-size: 12px; color: #333; padding: 6px 9px; border: 1px solid #eee; border-radius: 8px; background: #fafafa; }
+.arh-crow.arh-csame { border-color: #ffd0d8; background: #fff5f7; }
+.arh-cnext { color: #888; font-size: 11px; }
+.arh-csame .arh-cnext { color: #c0143c; font-weight: 600; }
+
 .arh-hint { font-size: 11px; color: #888; margin-top: 10px; line-height: 1.4; }
 .arh-hint code { background: #f2f2f2; padding: 1px 4px; border-radius: 4px; }

@@ -21,7 +21,9 @@
     {
       "matches": [
         "https://www.airbnb.com/hosting/reviews/*",
-        "https://www.airbnb.com/hosting/messages/*"
+        "https://www.airbnb.com/hosting/messages/*",
+        "https://www.airbnb.com/multicalendar/*",
+        "https://www.airbnb.com/calendar*"
       ],
       "js": ["content.js"],
       "css": ["panel.css"],
