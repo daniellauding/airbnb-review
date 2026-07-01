@@ -85,7 +85,7 @@ function buildMessages(p) {
     "- Basera tonen på BETYGEN (1–10). Högt = beröm det specifikt; lågt = var artig och diplomatisk PUBLIKT, men du får vara vänligt ärlig/konstruktiv PRIVAT.",
     "- Hitta aldrig på specifika fakta som inte antyds av kontexten/betygen.",
     "- Om ett betyg är lågt (t.ex. städning): hylla det INTE; utelämna det publikt eller formulera det snällt.",
-    "- Variera de tre alternativen MYCKET: olika längd (ett får vara en enda kort mening), olika inledning och vinkel.",
+    "- Variera de tre alternativen tydligt i inledning och vinkel — men håll ALLA tre till den angivna längden nedan (variera INTE längden).",
     "- Låt det låta som en riktig värd, inte en reklamtext: jordnära, specifikt, lite återhållet är bra.",
     "- Undvik klyschor och överdrifter: inga 'top-notch', 'kändes som hemma', 'positiv energi', 'ett nöje', 'helt perfekt', 'oförglömlig', inga utropstecken på rad. Beröm bara det betygen/kontexten stödjer.",
     "- Naturlig värd-röst, inga emojis om inte tonen är väldigt varm/lekfull, inga hashtags."
@@ -102,17 +102,19 @@ function buildMessages(p) {
     "- Base the sentiment on the RATINGS provided (1-10). High = praise it specifically; low = stay gracious and diplomatic in PUBLIC, but you may be gently honest/constructive in PRIVATE.",
     "- Never invent specific facts not implied by the context/ratings.",
     "- If a rating is low (e.g. cleanliness), do NOT gush about it; either omit it publicly or phrase it kindly.",
-    "- Vary the three options a LOT: different length (one can be a single short sentence), different opening and angle.",
+    "- Vary the three options clearly in opening and angle — but keep ALL three to the specified length below (do NOT vary the length).",
     "- Sound like a real host, not a marketing blurb: understated, specific, a little plain is good.",
     "- Avoid clichés and gushing: no 'top-notch', 'felt like home', 'positive energy', 'a pleasure', 'perfect', 'outstanding', 'memorable', stacked exclamation marks. Only praise what the ratings/context support.",
     "- Natural host voice, no emojis unless the tone is very warm, no hashtags."
   ].join("\n");
 
   const lengthHint = lang === "sv"
-    ? (length === "detailed" ? "Längd: 3–4 meningar, lite mer detalj."
-      : length === "medium" ? "Längd: 2–3 meningar." : "Längd: 1–2 korta meningar.")
-    : (length === "detailed" ? "Length: 3-4 sentences, a bit more detail."
-      : length === "medium" ? "Length: 2-3 sentences." : "Length: 1-2 short sentences.");
+    ? (length === "detailed" ? "LÄNGD (obligatorisk): varje alternativ EXAKT 3–4 meningar."
+      : length === "medium" ? "LÄNGD (obligatorisk): varje alternativ EXAKT 2–3 meningar."
+      : "LÄNGD (obligatorisk): varje alternativ MAX 1–2 korta meningar — håll dem korta.")
+    : (length === "detailed" ? "LENGTH (required): every option EXACTLY 3-4 sentences."
+      : length === "medium" ? "LENGTH (required): every option EXACTLY 2-3 sentences."
+      : "LENGTH (required): every option AT MOST 1-2 short sentences — keep them short.");
 
   const toneHint = lang === "sv"
     ? `Ton: ${tone}. Matcha den (från saklig/neutral till varm/lekfull).`

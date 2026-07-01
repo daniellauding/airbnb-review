@@ -720,9 +720,9 @@
   }
   function render(data) {
     results.innerHTML = `
-      <div class="arh-group">Public review <span class="arh-grouphint">(third person, for other hosts)</span></div>
+      <div class="arh-group">Public review <span class="arh-grouphint">(third person, for other hosts)</span><button class="arh-regall" data-kind="public" type="button" title="Regenerate all three">New 3</button></div>
       ${data.public.map((t, i) => cardHTML(t, "public", i)).join("")}
-      <div class="arh-group">Private note <span class="arh-grouphint">(written to the guest)</span></div>
+      <div class="arh-group">Private note <span class="arh-grouphint">(written to the guest)</span><button class="arh-regall" data-kind="private" type="button" title="Regenerate all three">New 3</button></div>
       ${data.private.map((t, i) => cardHTML(t, "private", i)).join("")}
     `;
     results.querySelectorAll(".arh-copy").forEach((b) =>
@@ -741,6 +741,11 @@
     );
     results.querySelectorAll(".arh-regen").forEach((b) =>
       b.addEventListener("click", () => regenOne(b)));
+    results.querySelectorAll(".arh-regall").forEach((b) =>
+      b.addEventListener("click", () => {
+        results.querySelectorAll(`.arh-opt[data-kind="${b.dataset.kind}"] .arh-regen`)
+          .forEach((rb) => regenOne(rb));
+      }));
   }
 
   function currentPayload() {
