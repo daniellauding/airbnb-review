@@ -773,13 +773,18 @@
     const kind = opt.dataset.kind, idx = +opt.dataset.idx;
     const drafts = session.drafts || { public: [], private: [] };
     const avoid = (drafts[kind] || []).filter((_, i) => i !== idx);
-    const orig = btn.textContent;
-    btn.textContent = "…"; btn.disabled = true;
+    const tEl = opt.querySelector(".arh-opt-t");
+    const prevText = tEl.textContent;
+    opt.classList.add("arh-loading");
+    tEl.innerHTML = '<span class="arh-sk"></span><span class="arh-sk"></span><span class="arh-sk arh-sk-2"></span>';
+    opt.querySelectorAll("button").forEach((b) => (b.disabled = true));
+    setStatus('<span class="arh-spin"></span> Writing a fresh one…');
     chrome.runtime.sendMessage({ type: "generate", payload: { ...currentPayload(), single: kind, avoid } }, (resp) => {
-      btn.disabled = false; btn.textContent = orig;
-      if (chrome.runtime.lastError) return setStatus(chrome.runtime.lastError.message, true);
-      if (!resp || !resp.ok || !resp.text) return setStatus(resp && resp.error ? "Failed: " + resp.error : "Regenerate failed.", true);
-      opt.querySelector(".arh-opt-t").textContent = resp.text;
+      opt.classList.remove("arh-loading");
+      opt.querySelectorAll("button").forEach((b) => (b.disabled = false));
+      if (chrome.runtime.lastError) { tEl.textContent = prevText; return setStatus(chrome.runtime.lastError.message, true); }
+      if (!resp || !resp.ok || !resp.text) { tEl.textContent = prevText; return setStatus(resp && resp.error ? "Failed: " + resp.error : "Regenerate failed.", true); }
+      tEl.textContent = resp.text;
       const enc = encodeURIComponent(resp.text);
       opt.querySelector(".arh-use").dataset.txt = enc;
       opt.querySelector(".arh-copy").dataset.copy = enc;
@@ -787,6 +792,7 @@
       if (!Array.isArray(session.drafts[kind])) session.drafts[kind] = [];
       session.drafts[kind][idx] = resp.text;
       saveSession(session);
+      setStatus("Updated.");
     });
   }
 

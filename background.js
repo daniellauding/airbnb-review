@@ -236,20 +236,30 @@ function buildSingle(p) {
   if (p.context) ctxParts.push(String(p.context));
   const ctx = ctxParts.join("\n\n") || (lang === "sv" ? "(ingen)" : "(none)");
   const avoid = (p.avoid || []).filter(Boolean);
+  const length = p.length || "short";
+  const lengthHint = lang === "sv"
+    ? (length === "detailed" ? "LÄNGD (obligatorisk): EXAKT 3–4 meningar."
+      : length === "medium" ? "LÄNGD (obligatorisk): EXAKT 2–3 meningar."
+      : "LÄNGD (obligatorisk): MAX 1–2 korta meningar — håll det kort.")
+    : (length === "detailed" ? "LENGTH (required): EXACTLY 3-4 sentences."
+      : length === "medium" ? "LENGTH (required): EXACTLY 2-3 sentences."
+      : "LENGTH (required): AT MOST 1-2 short sentences — keep it short.");
   const sys = (lang === "sv" ? [
     `Du hjälper en Airbnb-VÄRD att skriva ${kind} — på svenska.`,
     'Svara ENDAST med giltig JSON: {"text":"..."} och inget annat.',
     "Jordnära och specifikt, inga klyschor eller överdrifter. Matcha betygen.",
+    lengthHint,
     named ? `Nämn namnet (${guestName}) naturligt.` : 'Nämn inte namnet; skriv "gästen".'
   ] : [
     `You help an Airbnb HOST write ${kind}, in English.`,
     'Return ONLY valid JSON: {"text":"..."} and nothing else.',
     "Grounded and specific, no clichés or gushing. Match the ratings.",
+    lengthHint,
     named ? `Mention the name (${guestName}) naturally.` : 'Do not mention the name; write "the guest".'
   ]).join("\n");
   const user = [
     (lang === "sv" ? `Gäst: ${guestName}` : `Guest: ${guestName}`),
-    (lang === "sv" ? `Ton: ${p.tone}. Längd: ${p.length}.` : `Tone: ${p.tone}. Length: ${p.length}.`),
+    (lang === "sv" ? `Ton: ${p.tone}. ${lengthHint}` : `Tone: ${p.tone}. ${lengthHint}`),
     "",
     (lang === "sv" ? "Betyg (1–10):" : "Ratings (1-10):"),
     `- overall ${r.overall} · communication ${r.communication} · cleanliness ${r.cleanliness} · rules ${r.rules}`,

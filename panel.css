@@ -106,6 +106,12 @@ textarea.arh-in { resize: vertical; }
 .arh-regen:hover { border-color: #FF385C; color: #FF385C; }
 .arh-regen:disabled { opacity: .6; cursor: default; }
 .arh-opt { border: 1px solid #eee; border-radius: 10px; padding: 10px; margin-bottom: 8px; background: #fafafa; }
+.arh-opt.arh-loading .arh-optbtns { opacity: .5; pointer-events: none; }
+.arh-opt-t .arh-sk { display: block; height: 11px; margin: 6px 0; border-radius: 5px;
+  background: linear-gradient(90deg, #ececec 25%, #f6f6f6 37%, #ececec 63%); background-size: 400% 100%;
+  animation: arh-shimmer 1.15s ease infinite; }
+.arh-opt-t .arh-sk-2 { width: 62%; }
+@keyframes arh-shimmer { 0% { background-position: 100% 0; } 100% { background-position: 0 0; } }
 .arh-opt-t { font-size: 13px; line-height: 1.45; color: #222; white-space: pre-wrap; }
 .arh-optbtns { display: flex; gap: 6px; margin-top: 8px; }
 .arh-copy, .arh-use {
