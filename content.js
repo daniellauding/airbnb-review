@@ -14,63 +14,121 @@
   };
 
   // ---------- Scraping ----------
+  function normalizeNames(s) {
+    return s.replace(/\s*,\s*/g, " and ").replace(/\s*&\s*/g, " and ").replace(/\s+/g, " ").trim();
+  }
+  // On a message thread the guest name is in the conversation header ("Nikoloz, Christina").
+  function scrapeGuestFromThread() {
+    const region = document.querySelector('[data-testid*="thread" i]') ||
+                   document.querySelector('[role="main"]') || document;
+    const blocked = /^(messages|inbox|today|all|unread|archived|read|sent|search|filters?|superhost|notifications?|translation on|translate|host)$/i;
+    for (const el of region.querySelectorAll('h1,h2,h3,[role="heading"]')) {
+      const t = (el.innerText || "").trim();
+      if (!t || t.length > 60 || blocked.test(t)) continue;
+      if (/[a-zA-ZÀ-ÿ]/.test(t) && !/\d{2}/.test(t) && !/[·•]/.test(t)) return normalizeNames(t);
+    }
+    // Fallback: guest first name(s) from the "Name · Booker" message labels.
+    const marks = [...(document.body.innerText || "").matchAll(/^(.+?)\s[·•]\s(?:Booker|Guest)$/gim)]
+      .map((m) => m[1].trim()).filter((n) => n && n.length < 40);
+    const uniq = [...new Set(marks)];
+    return uniq.length ? normalizeNames(uniq.join(" and ")) : "";
+  }
   function scrapeGuest() {
     const re = /(?:write a review for|skriv (?:en )?recension (?:för|om))\s+(.+?)[.!]?$/i;
-    const nodes = document.querySelectorAll("h1, h2, h3, span, div");
-    for (const n of nodes) {
+    for (const n of document.querySelectorAll("h1, h2, h3, span, div")) {
       const t = (n.textContent || "").trim();
       if (t.length < 120 && re.test(t)) {
         const m = t.match(re);
         if (m) return m[1].trim();
       }
     }
+    if (onMessages()) {
+      const g = scrapeGuestFromThread();
+      if (g) return g;
+    }
     const mt = document.title.match(/(?:review|recension) (?:for|för)\s+(.+?)\s*[|·-]/i);
     return mt ? mt[1].trim() : "";
   }
 
-  // Turn the raw conversation text into a clean, readable transcript for the model.
-  function formatTranscript(raw) {
-    const noise = [
-      /^all$/i, /^unread$/i, /^skip to last message.*/i, /^translation on$/i,
-      /^read by everyone$/i, /^read$/i, /^delivered$/i, /^sent$/i, /^requested$/i,
-      /^confirmed$/i, /^show details$/i, /^show more$/i, /^show less$/i, /^messages$/i,
-      /^take a moment.*/i, /^leave a review$/i, /^write a message.*/i, /^superhost$/i,
-      /^airbnb update.*/i, /^automated message.*/i, /^reservation.*/i,
-      /^\d{1,2}:\d{2}\s*(am|pm)?$/i,
-      /^(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\s+\d{1,2}(,\s*\d{4})?$/i,
-      /^\w{3}\s+\d{1,2}\s*[–-]\s*(\w{3}\s+)?\d{1,2}(,\s*\d{4})?$/i, // date ranges
-      /^[·•]$/
-    ];
-    const lines = raw.split("\n").map((l) => l.trim()).filter(Boolean);
-    const out = [];
-    const seenLong = new Set();
-    let lastSpeaker = "";
-    for (const line of lines) {
-      if (noise.some((re) => re.test(line))) continue;
-      const sp = line.match(/^(.+?)\s[·•]\s(Booker|Guest|Host)$/i);
-      if (sp) {
-        const name = sp[1].trim();
-        if (name !== lastSpeaker) { out.push(`\n${name}:`); lastSpeaker = name; }
-        continue;
-      }
-      // Drop repeated long lines (e.g. the listing/reservation card name).
-      if (line.length > 20) {
-        if (seenLong.has(line)) continue;
-        seenLong.add(line);
-      }
-      out.push(line);
+  // ---------- Conversation capture (as attributed turns: guest vs host) ----------
+  const NOISE = [
+    /^all$/i, /^unread$/i, /^skip to last message.*/i, /^translation on$/i, /^translate$/i,
+    /^read by everyone$/i, /^read$/i, /^delivered$/i, /^sent$/i, /^requested$/i, /^confirmed$/i,
+    /^show details$/i, /^show more$/i, /^show less$/i, /^messages$/i, /^superhost$/i,
+    /^take a moment.*/i, /^leave a review.*/i, /^write a message.*/i, /^return to inbox$/i,
+    /^airbnb update.*/i, /^automated message.*/i, /^reservation.*/i, /^cancellation policy.*/i,
+    /^your notes$/i, /^guests$/i, /^check-?in$/i, /^check-?out$/i, /^total for.*/i, /^firm$/i,
+    /^\d{1,2}:\d{2}\s*(am|pm)?$/i,
+    /^(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\.?\s+\d{1,2}(,\s*\d{4})?$/i,
+    /^\w{3,4},?\s+\w{3}\s+\d{1,2}.*$/i,
+    /^\w{3}\s+\d{1,2}\s*[–-]\s*(\w{3}\s+)?\d{1,2}.*$/i,
+    /^kr\s?[\d,. ]+$/i, /^[·•]$/
+  ];
+  const isNoise = (t) => NOISE.some((re) => re.test(t));
+  const redact = (t) => t
+    .replace(/(password|wifi|pass|code)\s*[:=]\s*\S+/gi, "$1: [redacted]")
+    .replace(/\+?\d[\d ()\-]{7,}\d/g, "[phone]");
+
+  function threadRegion() {
+    return document.querySelector('[data-testid*="thread" i]') ||
+           document.querySelector('[role="main"]') || document.body;
+  }
+
+  // Primary: classify each message bubble by horizontal position (host = right, guest = left).
+  function scrapeThreadDOM() {
+    const container = threadRegion();
+    const cr = container.getBoundingClientRect();
+    if (!cr.width) return [];
+    const mid = cr.left + cr.width / 2;
+    const leaves = [...container.querySelectorAll('[dir="auto"]')].filter((el) => {
+      const t = (el.innerText || "").trim();
+      return t && t.length >= 2 && t.length <= 2000 && !el.querySelector('[dir="auto"]');
+    });
+    const turns = [];
+    for (const el of leaves) {
+      let t = (el.innerText || "").trim();
+      if (isNoise(t)) continue;
+      const r = el.getBoundingClientRect();
+      if (!r.width) continue;
+      t = redact(t);
+      const who = (r.left + r.width / 2) > mid ? "host" : "guest";
+      const last = turns[turns.length - 1];
+      if (last && last.who === who) last.text += "\n" + t;
+      else turns.push({ who, text: t });
     }
-    return out.join("\n").replace(/\n{3,}/g, "\n\n").trim().slice(-3500);
+    return turns;
+  }
+
+  // Fallback: parse the flat transcript text using "Name · Booker" labels.
+  function scrapeThreadText() {
+    const raw = (threadRegion().innerText || "").split("\n").map((l) => l.trim()).filter(Boolean);
+    const turns = [];
+    const seen = new Set();
+    let cur = null;
+    for (const line of raw) {
+      if (isNoise(line)) continue;
+      const m = line.match(/^(.+?)\s[·•]\s(Booker|Guest|Host)$/i);
+      if (m) { cur = { who: /host/i.test(m[2]) ? "host" : "guest", text: "" }; turns.push(cur); continue; }
+      if (line.length > 20) { if (seen.has(line)) continue; seen.add(line); }
+      if (!cur) { cur = { who: "guest", text: "" }; turns.push(cur); }
+      cur.text += (cur.text ? "\n" : "") + redact(line);
+    }
+    return turns.filter((t) => t.text);
   }
 
   function scrapeThread() {
-    if (!onMessages()) return "";
-    const main =
-      document.querySelector('[data-testid="messaging-thread"]') ||
-      document.querySelector('[role="main"]') ||
-      document.querySelector("main") ||
-      document.body;
-    return formatTranscript((main.innerText || "").trim());
+    if (!onMessages()) return [];
+    let turns = scrapeThreadDOM();
+    if (turns.length < 2) turns = scrapeThreadText();
+    return turns.slice(-24); // keep the most recent turns
+  }
+
+  // Attributed transcript for the model (Host = me, Guest = the reviewee).
+  function toTranscript(turns) {
+    if (!turns || !turns.length) return "";
+    return turns
+      .map((t) => `${t.who === "host" ? "Host (me)" : "Guest"}: ${t.text.replace(/\s*\n\s*/g, " ").slice(0, 400)}`)
+      .join("\n").slice(-3500);
   }
 
   // ---------- Persistence (survives Airbnb's client-side navigation) ----------
@@ -78,8 +136,8 @@
     try { return (await chrome.storage.local.get("arh_thread")).arh_thread || null; }
     catch { return null; }
   }
-  async function saveThread(text, guest) {
-    const rec = { text, guest: guest || "", ts: Date.now(), url: location.href };
+  async function saveThread(turns, guest) {
+    const rec = { turns: turns || [], guest: guest || "", ts: Date.now(), url: location.href };
     try { await chrome.storage.local.set({ arh_thread: rec }); } catch {}
     return rec;
   }
@@ -240,7 +298,8 @@
           <button id="arh-clearctx" class="arh-mini arh-mini-x" type="button" title="Clear name, thread &amp; step choices">Clear</button>
         </div>
         <div id="arh-caphint" class="arh-caphint"></div>
-        <textarea id="arh-context" class="arh-in" rows="4" placeholder="Paste notes, or capture the thread / step above..."></textarea>
+        <div id="arh-chat" class="arh-chat" hidden></div>
+        <textarea id="arh-context" class="arh-in" rows="3" placeholder="Extra notes for the model (optional)"></textarea>
       </div>
 
       <button id="arh-gen" class="arh-gen">Generate review</button>
@@ -283,6 +342,48 @@
     statusEl.className = "arh-status" + (isErr ? " err" : "");
   }
 
+  // ---------- Conversation preview (chat bubbles) ----------
+  let threadTurns = [];
+  const escHTML = (s) => s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+  function renderChat(turns) {
+    threadTurns = Array.isArray(turns) ? turns : [];
+    const box = $("#arh-chat");
+    if (!threadTurns.length) { box.hidden = true; box.innerHTML = ""; box.dataset.all = "0"; return; }
+    const N = 6;
+    const showAll = box.dataset.all === "1";
+    const start = showAll ? 0 : Math.max(0, threadTurns.length - N);
+    const hiddenCount = start;
+    const rows = [];
+    if (hiddenCount > 0) rows.push(`<button class="arh-chatmore" data-act="all">Show ${hiddenCount} earlier messages</button>`);
+    for (let i = start; i < threadTurns.length; i++) {
+      const t = threadTurns[i];
+      const full = escHTML(t.text.replace(/\n/g, " "));
+      const long = full.length > 160;
+      const body = long ? full.slice(0, 160) + "…" : full;
+      rows.push(
+        `<div class="arh-bub ${t.who}" data-i="${i}">` +
+        `<span class="arh-bub-who">${t.who === "host" ? "Me" : "Guest"}</span>${body}` +
+        (long ? ` <button class="arh-chatmore" data-more="${i}">more</button>` : "") +
+        `</div>`
+      );
+    }
+    if (showAll && threadTurns.length > N) rows.push(`<button class="arh-chatmore" data-act="less">Show less</button>`);
+    box.innerHTML = rows.join("");
+    box.hidden = false;
+  }
+  $("#arh-chat").addEventListener("click", (e) => {
+    const b = e.target.closest(".arh-chatmore");
+    if (!b) return;
+    const box = $("#arh-chat");
+    if (b.dataset.act === "all") { box.dataset.all = "1"; renderChat(threadTurns); }
+    else if (b.dataset.act === "less") { box.dataset.all = "0"; renderChat(threadTurns); }
+    else if (b.dataset.more != null) {
+      const i = +b.dataset.more, t = threadTurns[i];
+      const bub = box.querySelector(`[data-i="${i}"]`);
+      if (bub && t) bub.innerHTML = `<span class="arh-bub-who">${t.who === "host" ? "Me" : "Guest"}</span>${escHTML(t.text.replace(/\n/g, " "))}`;
+    }
+  });
+
   async function openCard() {
     settings.hidden = true;
     card.hidden = false;
@@ -294,16 +395,22 @@
       else { $("#arh-guest").value = await getSavedGuest(); }
     }
 
-    // Context: on a thread, pull it live; elsewhere reuse the last captured thread.
-    if (!$("#arh-context").value.trim()) {
-      if (onMessages()) {
-        $("#arh-context").value = scrapeThread();
+    // Conversation: capture live on a thread; elsewhere reuse the last captured thread.
+    if (onMessages()) {
+      const turns = scrapeThread();
+      renderChat(turns);
+      if (turns.length) {
+        const guest = $("#arh-guest").value.trim() || scrapeGuest();
+        await saveThread(turns, guest);
+        setCapHint(`Captured ${turns.length} messages`);
+      }
+    } else {
+      const saved = await getSavedThread();
+      if (saved && saved.turns && saved.turns.length) {
+        renderChat(saved.turns);
+        setCapHint(`Thread from ${fmtTime(saved.ts)}${saved.guest ? " · " + saved.guest : ""} · ${saved.turns.length} messages`);
       } else {
-        const saved = await getSavedThread();
-        if (saved && saved.text) {
-          $("#arh-context").value = saved.text;
-          setCapHint(`Thread captured ${fmtTime(saved.ts)}${saved.guest ? " · " + saved.guest : ""}`);
-        }
+        renderChat([]);
       }
     }
 
@@ -356,25 +463,23 @@
     try { await chrome.storage.local.remove(["arh_thread", "arh_flow", "arh_guest"]); } catch {}
     upsertFlowBlock("");
     $("#arh-guest").value = "";
+    renderChat([]);
     setCapHint("Cleared (name, thread & step choices).");
   });
 
   $("#arh-capture").addEventListener("click", async () => {
     if (onMessages()) {
-      const text = scrapeThread();
-      if (!text || text.length < 20) {
-        setCapHint("No thread found to capture on this page.");
-        return;
-      }
-      $("#arh-context").value = text;
+      const turns = scrapeThread();
+      if (!turns.length) { setCapHint("No thread found to capture on this page."); return; }
+      renderChat(turns);
       const guest = $("#arh-guest").value.trim() || scrapeGuest();
-      const rec = await saveThread(text, guest);
-      setCapHint(`Captured ${fmtTime(rec.ts)} · ${text.length} chars (saved — works on the review page)`);
+      const rec = await saveThread(turns, guest);
+      setCapHint(`Captured ${turns.length} messages ${fmtTime(rec.ts)} (saved — works on the review page)`);
     } else {
       const saved = await getSavedThread();
-      if (saved && saved.text) {
-        $("#arh-context").value = saved.text;
-        setCapHint(`Loaded thread captured ${fmtTime(saved.ts)}${saved.guest ? " · " + saved.guest : ""}`);
+      if (saved && saved.turns && saved.turns.length) {
+        renderChat(saved.turns);
+        setCapHint(`Loaded ${saved.turns.length} messages from ${fmtTime(saved.ts)}`);
       } else {
         setCapHint("No thread captured yet — open a message thread and click Capture thread.");
       }
@@ -533,6 +638,7 @@
     const payload = {
       guest: $("#arh-guest").value.trim(),
       context: $("#arh-context").value.trim(),
+      thread: toTranscript(threadTurns),
       tone: $("#seg-tone").dataset.val,
       lang: $("#seg-lang").dataset.val,
       includeName: $("#arh-named").checked,
@@ -552,8 +658,25 @@
     const tick = () => { gen.textContent = `Generating... ${((Date.now() - t0) / 1000).toFixed(0)}s`; };
     tick();
     const timer = setInterval(tick, 500);
-    setStatus('<span class="arh-spin"></span> Running the local model...');
-    const finish = (fn) => { clearInterval(timer); gen.disabled = false; gen.textContent = orig; fn(); };
+
+    const QUIPS = [
+      "Reading the conversation…",
+      "Weighing your ratings…",
+      "Finding the right words…",
+      "Honest, but kind…",
+      "Matching your tone…",
+      "Drafting the public review…",
+      "Writing the private note…",
+      "Polishing the phrasing…",
+      "Almost there…"
+    ];
+    let qi = 0;
+    setStatus(`<span class="arh-spin"></span> ${QUIPS[0]}`);
+    const quips = setInterval(() => {
+      qi = (qi + 1) % QUIPS.length;
+      setStatus(`<span class="arh-spin"></span> ${QUIPS[qi]}`);
+    }, 2400);
+    const finish = (fn) => { clearInterval(timer); clearInterval(quips); gen.disabled = false; gen.textContent = orig; fn(); };
 
     chrome.runtime.sendMessage({ type: "generate", payload }, (resp) => {
       if (chrome.runtime.lastError) return finish(() => setStatus(chrome.runtime.lastError.message, true));

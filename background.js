@@ -62,6 +62,16 @@ function buildMessages(p) {
         ? `Mention the guest's name (${guestName}) naturally — ideally opening at least one option with it.`
         : `Do NOT mention any name. Write "the guest"/"the guests" instead.`);
 
+  // Combine the (attributed) conversation transcript with any manual notes/flow.
+  const ctxParts = [];
+  if (p.thread) {
+    ctxParts.push((lang === "sv"
+      ? "Konversation (Host = jag/värden, Guest = gästen):\n"
+      : "Conversation (Host = me, Guest = the guest):\n") + String(p.thread).slice(0, 3500));
+  }
+  if (p.context) ctxParts.push(String(p.context));
+  const ctx = ctxParts.join("\n\n") || (lang === "sv" ? "(ingen)" : "(none)");
+
   const sys = lang === "sv" ? [
     "Du hjälper en Airbnb-VÄRD att skriva korta, äkta recensioner om sina GÄSTER — på svenska.",
     "Svara ENDAST med giltig JSON, ingen övrig text, exakt i denna form:",
@@ -116,8 +126,8 @@ function buildMessages(p) {
     `- Städning / ordning: ${r.cleanliness ?? "-"} (${scoreWord(r.cleanliness, lang)})`,
     `- Husregler & respekt: ${r.rules ?? "-"} (${scoreWord(r.rules, lang)})`,
     "",
-    "Kontext / anteckningar (från värden eller meddelandetråden — kan vara tom):",
-    (p.context || "(ingen)").slice(0, 4000)
+    "Kontext (konversation + anteckningar):",
+    ctx.slice(0, 4500)
   ].join("\n") : [
     `Guest name(s): ${p.guest || "the guest"}`,
     nameDirective,
@@ -130,8 +140,8 @@ function buildMessages(p) {
     `- Cleanliness / tidiness: ${r.cleanliness ?? "-"} (${scoreWord(r.cleanliness, lang)})`,
     `- House rules & respect: ${r.rules ?? "-"} (${scoreWord(r.rules, lang)})`,
     "",
-    "Context / notes (from the host or the message thread — may be empty):",
-    (p.context || "(none)").slice(0, 4000)
+    "Context (conversation + notes):",
+    ctx.slice(0, 4500)
   ].join("\n");
 
   return [
