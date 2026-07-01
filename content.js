@@ -26,8 +26,14 @@
   }
   // On a message thread the guest name is in the conversation header ("Marcela, Gabriel").
   function scrapeGuestFromThread() {
-    const region = document.querySelector('[data-testid*="thread" i]') ||
-                   document.querySelector('[role="main"]') || document;
+    // Airbnb exposes the conversation title here — the most reliable source.
+    const title = document.querySelector('[data-testid="thread-header-title"]');
+    if (title) {
+      const t = (title.innerText || "").trim();
+      if (looksLikeName(t)) return normalizeNames(t);
+    }
+    const region = document.querySelector('#thread_panel') ||
+                   document.querySelector('[data-testid*="thread" i]') || document;
     const heads = [...region.querySelectorAll('h1,h2,h3,[role="heading"]')].map((el) => (el.innerText || "").trim());
     const multi = heads.find((t) => looksLikeName(t) && /(,|&|\band\b)/i.test(t)); // prefer "Name, Name"
     if (multi) return normalizeNames(multi);
@@ -76,63 +82,57 @@
     .replace(/(password|wifi|pass|code)\s*[:=]\s*\S+/gi, "$1: [redacted]")
     .replace(/\+?\d[\d ()\-]{7,}\d/g, "[phone]");
 
-  // Pick the visible container that holds the most conversation text.
-  function bestThreadContainer() {
-    const cands = [...document.querySelectorAll('[data-testid*="thread" i], [role="main"], main')]
-      .filter((el) => !panel.contains(el));
-    let best = null, len = 0;
-    for (const el of cands) {
-      const l = (el.innerText || "").length;
-      if (l > len) { best = el; len = l; }
-    }
-    return best || document.body;
+  // The open conversation thread (NOT the inbox list on the left).
+  function threadPanel() {
+    return document.querySelector('[data-testid="message-list"]') ||
+           document.querySelector('[data-testid="message-thread-item-list-container"]') ||
+           document.querySelector('#thread_panel') || null;
   }
 
-  // Find leaf-ish text blocks (message bubbles) regardless of Airbnb's class names.
-  function textLeaves(root) {
-    const out = [];
-    const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT, {
-      acceptNode(el) {
-        if (panel.contains(el)) return NodeFilter.FILTER_REJECT;
-        const t = (el.innerText || "").trim();
-        if (!t || t.length < 2 || t.length > 2000) return NodeFilter.FILTER_SKIP;
-        for (const c of el.children) {
-          if ((c.innerText || "").trim().length > t.length * 0.8) return NodeFilter.FILTER_SKIP;
-        }
-        return NodeFilter.FILTER_ACCEPT;
-      }
-    });
-    let n;
-    while ((n = walker.nextNode())) out.push(n);
-    return out;
+  // First names of the current guest(s), used to attribute each message.
+  function guestFirstNames() {
+    return new Set(
+      scrapeGuestFromThread()
+        .split(/\s+and\s+|,\s*/)
+        .map((s) => s.trim().split(/\s+/)[0].toLowerCase())
+        .filter(Boolean)
+    );
   }
 
-  const isSenderLabel = (t) => /[·•]\s*(booker|host|guest)\b/i.test(t);
-
-  // Primary: bubbles classified by horizontal position (host = right, guest = left).
+  // Primary: each message row exposes an aria-label like
+  //   "Feb 22. Marcela sent Hi, Daniel...Thanks Marcela . Sent Feb 22, 10:47 PM"
+  // which gives us sender + text directly, so attribution is exact.
   function scrapeThreadDOM() {
-    const container = bestThreadContainer();
-    const cr = container.getBoundingClientRect();
-    if (!cr.width) return [];
-    const mid = cr.left + cr.width / 2;
+    const list = threadPanel();
+    if (!list) return [];
+    const guests = guestFirstNames();
     const turns = [];
-    for (const el of textLeaves(container)) {
-      let t = (el.innerText || "").trim();
-      if (isNoise(t) || isSenderLabel(t)) continue;
-      const r = el.getBoundingClientRect();
-      if (!r.width || r.width > cr.width * 0.95) continue; // skip full-width chrome
-      t = redact(t);
-      const who = (r.left + r.width / 2) > mid ? "host" : "guest";
+    for (const row of list.querySelectorAll('[role="group"][data-item-id]')) {
+      let label = (row.getAttribute("aria-label") || "").trim();
+      if (!label) continue;
+      label = label.replace(/^Most Recent Message\.\s*/i, "");
+      label = label.replace(/^(?:\w{3,9}(?:\s\d{1,2})?|\w+day|today|yesterday)\.\s+/i, "");
+      const m = label.match(/^(.+?)\s+sent\s+([\s\S]*?)\.?\s+Sent\s+.*$/i);
+      if (!m) continue;
+      const sender = m[1].trim();
+      let text = m[2].trim();
+      if (/airbnb service|airbnb$/i.test(sender)) continue;
+      if (/description not available|^a picture$|^an image$/i.test(text)) continue; // cards / photos
+      text = redact(text).replace(/\s*\.\s*/g, ". ").trim();
+      if (!text) continue;
+      const who = guests.has(sender.toLowerCase()) ? "guest" : "host";
       const last = turns[turns.length - 1];
-      if (last && last.who === who) last.text += "\n" + t;
-      else turns.push({ who, text: t });
+      if (last && last.who === who) last.text += "\n" + text;
+      else turns.push({ who, text });
     }
     return turns;
   }
 
-  // Fallback: parse the flat text using "Name · Booker" labels (may include a trailing time).
+  // Fallback: parse the thread panel's text using "Name · Booker" labels.
   function scrapeThreadText() {
-    const raw = (bestThreadContainer().innerText || "").split("\n").map((l) => l.trim()).filter(Boolean);
+    const panelEl = threadPanel();
+    if (!panelEl) return [];
+    const raw = (panelEl.innerText || "").split("\n").map((l) => l.trim()).filter(Boolean);
     const turns = [];
     const seen = new Set();
     let cur = null;
@@ -151,7 +151,7 @@
     if (!onMessages()) return [];
     let turns = scrapeThreadDOM();
     if (turns.length < 2) turns = scrapeThreadText();
-    return turns.slice(-24); // keep the most recent turns
+    return turns.slice(-30); // keep the most recent turns
   }
 
   // Attributed transcript for the model (Host = me, Guest = the reviewee).
