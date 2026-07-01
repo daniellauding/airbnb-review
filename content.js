@@ -17,19 +17,25 @@
   function normalizeNames(s) {
     return s.replace(/\s*,\s*/g, " and ").replace(/\s*&\s*/g, " and ").replace(/\s+/g, " ").trim();
   }
-  // On a message thread the guest name is in the conversation header ("Nikoloz, Christina").
+  // A real person-name: capitalized tokens joined by comma / "and" / "&", no digits or noise words.
+  function looksLikeName(t) {
+    if (!t || t.length < 2 || t.length > 44) return false;
+    if (/\d/.test(t) || /[·•:@/]/.test(t)) return false;
+    if (/\b(group|guest|guests|reservation|review|leave|cancellation|policy|total|code|notes?|add|suggested|check|checkout|translation|translate|verified|superhost|enjoys|messages|inbox|host|booker|nights?|other|others)\b/i.test(t)) return false;
+    return /^[\p{Lu}][\p{L}'’.-]+(?:\s*(?:,|&|and)\s*[\p{Lu}][\p{L}'’.-]+)*$/u.test(t);
+  }
+  // On a message thread the guest name is in the conversation header ("Marcela, Gabriel").
   function scrapeGuestFromThread() {
     const region = document.querySelector('[data-testid*="thread" i]') ||
                    document.querySelector('[role="main"]') || document;
-    const blocked = /^(messages|inbox|today|all|unread|archived|read|sent|search|filters?|superhost|notifications?|translation on|translate|host)$/i;
-    for (const el of region.querySelectorAll('h1,h2,h3,[role="heading"]')) {
-      const t = (el.innerText || "").trim();
-      if (!t || t.length > 60 || blocked.test(t)) continue;
-      if (/[a-zA-ZÀ-ÿ]/.test(t) && !/\d{2}/.test(t) && !/[·•]/.test(t)) return normalizeNames(t);
-    }
+    const heads = [...region.querySelectorAll('h1,h2,h3,[role="heading"]')].map((el) => (el.innerText || "").trim());
+    const multi = heads.find((t) => looksLikeName(t) && /(,|&|\band\b)/i.test(t)); // prefer "Name, Name"
+    if (multi) return normalizeNames(multi);
+    const single = heads.find(looksLikeName);
+    if (single) return normalizeNames(single);
     // Fallback: guest first name(s) from the "Name · Booker" message labels.
     const marks = [...(document.body.innerText || "").matchAll(/^(.+?)\s[·•]\s(?:Booker|Guest)$/gim)]
-      .map((m) => m[1].trim()).filter((n) => n && n.length < 40);
+      .map((m) => m[1].trim()).filter(looksLikeName);
     const uniq = [...new Set(marks)];
     return uniq.length ? normalizeNames(uniq.join(" and ")) : "";
   }
@@ -58,6 +64,7 @@
     /^take a moment.*/i, /^leave a review.*/i, /^write a message.*/i, /^return to inbox$/i,
     /^airbnb update.*/i, /^automated message.*/i, /^reservation.*/i, /^cancellation policy.*/i,
     /^your notes$/i, /^guests$/i, /^check-?in$/i, /^check-?out$/i, /^total for.*/i, /^firm$/i,
+    /^read by\b.*/i, /^yesterday$/i, /^today$/i, /^add a note.*/i, /^suggested door code.*/i, /^switch to.*/i,
     /^\d{1,2}:\d{2}\s*(am|pm)?$/i,
     /^(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\.?\s+\d{1,2}(,\s*\d{4})?$/i,
     /^\w{3,4},?\s+\w{3}\s+\d{1,2}.*$/i,
@@ -69,27 +76,51 @@
     .replace(/(password|wifi|pass|code)\s*[:=]\s*\S+/gi, "$1: [redacted]")
     .replace(/\+?\d[\d ()\-]{7,}\d/g, "[phone]");
 
-  function threadRegion() {
-    return document.querySelector('[data-testid*="thread" i]') ||
-           document.querySelector('[role="main"]') || document.body;
+  // Pick the visible container that holds the most conversation text.
+  function bestThreadContainer() {
+    const cands = [...document.querySelectorAll('[data-testid*="thread" i], [role="main"], main')]
+      .filter((el) => !panel.contains(el));
+    let best = null, len = 0;
+    for (const el of cands) {
+      const l = (el.innerText || "").length;
+      if (l > len) { best = el; len = l; }
+    }
+    return best || document.body;
   }
 
-  // Primary: classify each message bubble by horizontal position (host = right, guest = left).
+  // Find leaf-ish text blocks (message bubbles) regardless of Airbnb's class names.
+  function textLeaves(root) {
+    const out = [];
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT, {
+      acceptNode(el) {
+        if (panel.contains(el)) return NodeFilter.FILTER_REJECT;
+        const t = (el.innerText || "").trim();
+        if (!t || t.length < 2 || t.length > 2000) return NodeFilter.FILTER_SKIP;
+        for (const c of el.children) {
+          if ((c.innerText || "").trim().length > t.length * 0.8) return NodeFilter.FILTER_SKIP;
+        }
+        return NodeFilter.FILTER_ACCEPT;
+      }
+    });
+    let n;
+    while ((n = walker.nextNode())) out.push(n);
+    return out;
+  }
+
+  const isSenderLabel = (t) => /[·•]\s*(booker|host|guest)\b/i.test(t);
+
+  // Primary: bubbles classified by horizontal position (host = right, guest = left).
   function scrapeThreadDOM() {
-    const container = threadRegion();
+    const container = bestThreadContainer();
     const cr = container.getBoundingClientRect();
     if (!cr.width) return [];
     const mid = cr.left + cr.width / 2;
-    const leaves = [...container.querySelectorAll('[dir="auto"]')].filter((el) => {
-      const t = (el.innerText || "").trim();
-      return t && t.length >= 2 && t.length <= 2000 && !el.querySelector('[dir="auto"]');
-    });
     const turns = [];
-    for (const el of leaves) {
+    for (const el of textLeaves(container)) {
       let t = (el.innerText || "").trim();
-      if (isNoise(t)) continue;
+      if (isNoise(t) || isSenderLabel(t)) continue;
       const r = el.getBoundingClientRect();
-      if (!r.width) continue;
+      if (!r.width || r.width > cr.width * 0.95) continue; // skip full-width chrome
       t = redact(t);
       const who = (r.left + r.width / 2) > mid ? "host" : "guest";
       const last = turns[turns.length - 1];
@@ -99,15 +130,15 @@
     return turns;
   }
 
-  // Fallback: parse the flat transcript text using "Name · Booker" labels.
+  // Fallback: parse the flat text using "Name · Booker" labels (may include a trailing time).
   function scrapeThreadText() {
-    const raw = (threadRegion().innerText || "").split("\n").map((l) => l.trim()).filter(Boolean);
+    const raw = (bestThreadContainer().innerText || "").split("\n").map((l) => l.trim()).filter(Boolean);
     const turns = [];
     const seen = new Set();
     let cur = null;
     for (const line of raw) {
       if (isNoise(line)) continue;
-      const m = line.match(/^(.+?)\s[·•]\s(Booker|Guest|Host)$/i);
+      const m = line.match(/^(.+?)\s[·•]\s(Booker|Guest|Host)\b/i);
       if (m) { cur = { who: /host/i.test(m[2]) ? "host" : "guest", text: "" }; turns.push(cur); continue; }
       if (line.length > 20) { if (seen.has(line)) continue; seen.add(line); }
       if (!cur) { cur = { who: "guest", text: "" }; turns.push(cur); }
