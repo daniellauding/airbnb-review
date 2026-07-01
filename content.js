@@ -22,6 +22,9 @@
     if (!t || t.length < 2 || t.length > 44) return false;
     if (/\d/.test(t) || /[·•:@/]/.test(t)) return false;
     if (/\b(group|guest|guests|reservation|review|leave|cancellation|policy|total|code|notes?|add|suggested|check|checkout|translation|translate|verified|superhost|enjoys|messages|inbox|host|booker|nights?|other|others)\b/i.test(t)) return false;
+    // reject weekdays, relative days and months (thread date separators)
+    if (/^(mon|tues|wednes|thurs|fri|satur|sun)day$|^(today|yesterday|tomorrow)$/i.test(t)) return false;
+    if (/^(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)(uary|ruary|ch|il|e|y|ust|tember|ober|ember)?$/i.test(t)) return false;
     return /^[\p{Lu}][\p{L}'’.-]+(?:\s*(?:,|&|and)\s*[\p{Lu}][\p{L}'’.-]+)*$/u.test(t);
   }
   // On a message thread the guest name is in the conversation header ("Marcela, Gabriel").
@@ -29,7 +32,10 @@
     // Airbnb exposes the conversation title here — the most reliable source.
     const title = document.querySelector('[data-testid="thread-header-title"]');
     if (title) {
-      const t = (title.innerText || "").trim();
+      const vis = title.querySelector('[aria-hidden="true"]');
+      let t = ((vis ? vis.innerText : title.innerText) || "").split("\n")[0].trim();
+      const h = t.length / 2; // collapse a doubled string ("NameName" from a sr-only copy)
+      if (t.length % 2 === 0 && h > 1 && t.slice(0, h) === t.slice(h)) t = t.slice(0, h).trim();
       if (looksLikeName(t)) return normalizeNames(t);
     }
     const region = document.querySelector('#thread_panel') ||
