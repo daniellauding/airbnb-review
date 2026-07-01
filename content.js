@@ -249,10 +249,14 @@
         }
       });
 
-    const notes = [...document.querySelectorAll("textarea")]
+    // Skip the free-text steps (public review / private note) — their textarea
+    // holds the OUTPUT we're writing, not an input to feed back in.
+    const category = categoryOf(question);
+    const skipNotes = /Overall \(public\)|Private feedback/.test(category);
+    const notes = skipNotes ? [] : [...document.querySelectorAll("textarea")]
       .filter((t) => !panel.contains(t)).map((t) => t.value.trim()).filter(Boolean);
 
-    return { category: categoryOf(question), question, selected: [...new Set(selected)], notes };
+    return { category, question, selected: [...new Set(selected)], notes };
   }
 
   function mergeStepInto(flow, step) {
@@ -323,6 +327,7 @@
 
       <div id="arh-chipsrow" class="arh-chipsrow" hidden>
         <div id="arh-chips" class="arh-chips"></div>
+        <button id="arh-new" class="arh-newbtn" type="button" title="Start a fresh review">+ New</button>
         <button id="arh-clearall" class="arh-clearall" type="button" title="Remove all saved guests">Clear all</button>
       </div>
 
@@ -449,6 +454,15 @@
       $("#arh-guest").value = session.guest || ""; $("#arh-context").value = "";
       renderChat([]); results.innerHTML = ""; renderChips({}, "");
       setCapHint("Removed all saved guests.");
+    });
+    // "+ New" — blank the panel (saved guests stay as chips) to start another.
+    $("#arh-new").addEventListener("click", async () => {
+      session = blankSession("");
+      await setActiveKey("");
+      $("#arh-guest").value = ""; $("#arh-context").value = "";
+      renderChat([]); results.innerHTML = ""; upsertFlowBlock("");
+      renderChips(await getSessions(), "");
+      setCapHint("New review — open a guest's thread/review, or type a name.");
     });
   }
   function renderChat(turns) {

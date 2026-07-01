@@ -56,6 +56,8 @@ textarea.arh-in { resize: vertical; }
 .arh-chip-x:hover { color: #c0143c; }
 .arh-chip.on .arh-chip-x { color: #ffd0d8; }
 .arh-chip.on .arh-chip-x:hover { color: #fff; }
+.arh-newbtn { flex: 0 0 auto; background: #fff; border: 1px solid #FF385C; color: #FF385C; cursor: pointer; font: inherit; font-size: 11px; font-weight: 600; border-radius: 999px; padding: 4px 11px; }
+.arh-newbtn:hover { background: #FF385C; color: #fff; }
 .arh-clearall { flex: 0 0 auto; background: none; border: none; cursor: pointer; font: inherit; font-size: 11px; color: #999; text-decoration: underline; padding: 2px; }
 .arh-clearall:hover { color: #c0143c; }
 
