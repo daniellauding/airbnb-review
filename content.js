@@ -314,10 +314,10 @@
   const panel = document.createElement("div");
   panel.id = "arh-panel";
   panel.innerHTML = `
-    <div id="arh-fab" title="Review Helper">${IC.pen}</div>
+    <div id="arh-fab" title="Airbnb Helper">${IC.pen}</div>
     <div id="arh-card" hidden>
       <div class="arh-head">
-        <strong>Review Helper</strong>
+        <strong>Airbnb Helper</strong>
         <span class="arh-sp"></span>
         <button id="arh-gear" class="arh-icon" title="Settings" aria-label="Settings">${IC.cog}</button>
         <button id="arh-x" class="arh-icon" title="Close" aria-label="Close">${IC.x}</button>
