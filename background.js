@@ -77,30 +77,34 @@ function buildMessages(p) {
     "Svara ENDAST med giltig JSON, ingen övrig text, exakt i denna form:",
     '{"public":["alt1","alt2","alt3"],"private":["alt1","alt2","alt3"]}',
     "",
-    "public  = 3 olika alternativ som visas publikt på gästens profil.",
-    "private = 3 olika alternativ för ett privat meddelande som bara gästen ser.",
+    "public  = 3 olika alternativ i TREDJE PERSON om gästen (visas på deras profil, andra värdar läser). T.ex. \"Marcela och Gabriel var enkla att ha som gäster...\"",
+    "private = 3 olika alternativ skrivna DIREKT TILL gästen i DU/NI-form — ett personligt meddelande bara de ser (varmt tack, välkommen åter). T.ex. \"Tack för att ni var så lätta att ha som gäster – välkomna tillbaka!\". Beskriv dem INTE i tredje person här.",
     "",
     "Regler:",
     "- Behåll gästens namn exakt som angivet.",
     "- Basera tonen på BETYGEN (1–10). Högt = beröm det specifikt; lågt = var artig och diplomatisk PUBLIKT, men du får vara vänligt ärlig/konstruktiv PRIVAT.",
     "- Hitta aldrig på specifika fakta som inte antyds av kontexten/betygen.",
     "- Om ett betyg är lågt (t.ex. städning): hylla det INTE; utelämna det publikt eller formulera det snällt.",
-    "- Variera formuleringarna tydligt mellan de tre alternativen (olika inledningar, inte mallat).",
+    "- Variera de tre alternativen MYCKET: olika längd (ett får vara en enda kort mening), olika inledning och vinkel.",
+    "- Låt det låta som en riktig värd, inte en reklamtext: jordnära, specifikt, lite återhållet är bra.",
+    "- Undvik klyschor och överdrifter: inga 'top-notch', 'kändes som hemma', 'positiv energi', 'ett nöje', 'helt perfekt', 'oförglömlig', inga utropstecken på rad. Beröm bara det betygen/kontexten stödjer.",
     "- Naturlig värd-röst, inga emojis om inte tonen är väldigt varm/lekfull, inga hashtags."
   ].join("\n") : [
     "You help an Airbnb HOST write short, authentic, English reviews of their GUESTS.",
     "Return ONLY valid JSON, no prose, in this exact shape:",
     '{"public":["opt1","opt2","opt3"],"private":["opt1","opt2","opt3"]}',
     "",
-    "public  = 3 distinct options that appear on the guest's public profile.",
-    "private = 3 distinct options for a private note sent only to the guest.",
+    "public  = 3 distinct options in THIRD PERSON about the guest (shown on their profile, read by other hosts). E.g. \"Marcela and Gabriel were easy guests to host...\"",
+    "private = 3 distinct options written DIRECTLY TO the guest in second person (\"you\") — a personal note only they can read (a warm thank-you, see-you-again). E.g. \"Thanks for being such easy guests — you'd be welcome back anytime!\". Do NOT describe them in third person here.",
     "",
     "Rules:",
     "- Keep the guest name(s) exactly as given.",
     "- Base the sentiment on the RATINGS provided (1-10). High = praise it specifically; low = stay gracious and diplomatic in PUBLIC, but you may be gently honest/constructive in PRIVATE.",
     "- Never invent specific facts not implied by the context/ratings.",
     "- If a rating is low (e.g. cleanliness), do NOT gush about it; either omit it publicly or phrase it kindly.",
-    "- Vary wording clearly across the three options (different openings, not templated).",
+    "- Vary the three options a LOT: different length (one can be a single short sentence), different opening and angle.",
+    "- Sound like a real host, not a marketing blurb: understated, specific, a little plain is good.",
+    "- Avoid clichés and gushing: no 'top-notch', 'felt like home', 'positive energy', 'a pleasure', 'perfect', 'outstanding', 'memorable', stacked exclamation marks. Only praise what the ratings/context support.",
     "- Natural host voice, no emojis unless the tone is very warm, no hashtags."
   ].join("\n");
 
@@ -215,11 +219,59 @@ function safeParse(raw) {
   return null;
 }
 
+// ---------- Regenerate a single option ----------
+function buildSingle(p) {
+  const lang = p.lang === "sv" ? "sv" : "en";
+  const named = p.includeName !== false;
+  const guestName = p.guest || (lang === "sv" ? "gästen" : "the guest");
+  const priv = p.single === "private";
+  const kind = lang === "sv"
+    ? (priv ? "ett privat meddelande skrivet DIREKT TILL gästen i du/ni-form (bara de läser)" : "en publik recension i tredje person om gästen")
+    : (priv ? "a private note written DIRECTLY TO the guest in second person (\"you\", only they read it)" : "a public review in third person about the guest");
+  const r = p.ratings || {};
+  const ctxParts = [];
+  if (p.thread) ctxParts.push((lang === "sv" ? "Konversation (Host = jag, Guest = gästen):\n" : "Conversation (Host = me, Guest = the guest):\n") + String(p.thread).slice(0, 3500));
+  if (p.context) ctxParts.push(String(p.context));
+  const ctx = ctxParts.join("\n\n") || (lang === "sv" ? "(ingen)" : "(none)");
+  const avoid = (p.avoid || []).filter(Boolean);
+  const sys = (lang === "sv" ? [
+    `Du hjälper en Airbnb-VÄRD att skriva ${kind} — på svenska.`,
+    'Svara ENDAST med giltig JSON: {"text":"..."} och inget annat.',
+    "Jordnära och specifikt, inga klyschor eller överdrifter. Matcha betygen.",
+    named ? `Nämn namnet (${guestName}) naturligt.` : 'Nämn inte namnet; skriv "gästen".'
+  ] : [
+    `You help an Airbnb HOST write ${kind}, in English.`,
+    'Return ONLY valid JSON: {"text":"..."} and nothing else.',
+    "Grounded and specific, no clichés or gushing. Match the ratings.",
+    named ? `Mention the name (${guestName}) naturally.` : 'Do not mention the name; write "the guest".'
+  ]).join("\n");
+  const user = [
+    (lang === "sv" ? `Gäst: ${guestName}` : `Guest: ${guestName}`),
+    (lang === "sv" ? `Ton: ${p.tone}. Längd: ${p.length}.` : `Tone: ${p.tone}. Length: ${p.length}.`),
+    "",
+    (lang === "sv" ? "Betyg (1–10):" : "Ratings (1-10):"),
+    `- overall ${r.overall} · communication ${r.communication} · cleanliness ${r.cleanliness} · rules ${r.rules}`,
+    "",
+    (lang === "sv" ? "Kontext:" : "Context:"), ctx.slice(0, 3500),
+    avoid.length ? "\n" + (lang === "sv" ? "Skriv något TYDLIGT annorlunda än dessa:" : "Write something CLEARLY different from these:") + "\n" + avoid.map((a) => "- " + a).join("\n") : ""
+  ].join("\n");
+  return [{ role: "system", content: sys }, { role: "user", content: user }];
+}
+
+function parseSingle(raw) {
+  if (!raw) return "";
+  try { const o = JSON.parse(raw); if (o && typeof o.text === "string") return o.text.trim(); } catch {}
+  const m = raw.match(/"text"\s*:\s*"([\s\S]*?)"\s*}/);
+  if (m) { try { return JSON.parse('"' + m[1] + '"').trim(); } catch { return m[1].replace(/\\n/g, " ").trim(); } }
+  return (raw.split("\n").map((s) => s.trim()).filter((l) => l && !/^[{}]$/.test(l))[0] || "").replace(/^["'\-\d.\s]+/, "").trim();
+}
+
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg.type !== "generate") return;
   (async () => {
     const settings = await getSettings();
-    const messages = buildMessages(msg.payload || {});
+    const single = msg.payload && msg.payload.single;
+    const messages = single ? buildSingle(msg.payload) : buildMessages(msg.payload || {});
     const adapter = ADAPTERS[settings.provider] || callOllama;
     // Ollama can try several endpoints in order; cloud providers use one base URL.
     const bases = settings.provider === "ollama"
@@ -230,12 +282,16 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     for (const base of bases) {
       try {
         const raw = await adapter({ base, model: settings.model, messages, temperature: settings.temperature, apiKey: settings.apiKey });
-        const parsed = safeParse(raw);
-        if (parsed) {
-          sendResponse({ ok: true, data: parsed, used: { endpoint: base, model: settings.model, provider: settings.provider } });
-          return;
+        const used = { endpoint: base, model: settings.model, provider: settings.provider };
+        if (single) {
+          const text = parseSingle(raw);
+          if (text) { sendResponse({ ok: true, text, used }); return; }
+          errors.push(`${base}: empty output`);
+        } else {
+          const parsed = safeParse(raw);
+          if (parsed) { sendResponse({ ok: true, data: parsed, used }); return; }
+          errors.push(`${base}: model returned unparseable output`);
         }
-        errors.push(`${base}: model returned unparseable output`);
       } catch (e) {
         errors.push(`${base}: ${String(e.message || e)}`);
       }

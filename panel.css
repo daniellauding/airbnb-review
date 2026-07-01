@@ -97,6 +97,10 @@ textarea.arh-in { resize: vertical; }
 .arh-status.err { color: #c0392b; }
 
 .arh-group { font-size: 12px; font-weight: 700; color: #333; margin: 12px 0 6px; text-transform: uppercase; letter-spacing: .04em; }
+.arh-grouphint { font-weight: 400; text-transform: none; letter-spacing: 0; color: #aaa; font-size: 11px; }
+.arh-regen { background: #fff; color: #444; border: 1px solid #ddd; border-radius: 7px; padding: 5px 12px; font-size: 12px; cursor: pointer; }
+.arh-regen:hover { border-color: #FF385C; color: #FF385C; }
+.arh-regen:disabled { opacity: .6; cursor: default; }
 .arh-opt { border: 1px solid #eee; border-radius: 10px; padding: 10px; margin-bottom: 8px; background: #fafafa; }
 .arh-opt-t { font-size: 13px; line-height: 1.45; color: #222; white-space: pre-wrap; }
 .arh-optbtns { display: flex; gap: 6px; margin-top: 8px; }

@@ -694,21 +694,22 @@
   });
 
   // ---------- Generate ----------
-  function cardHTML(text) {
+  function cardHTML(text, kind, idx) {
     const esc = text.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
     const enc = encodeURIComponent(text);
-    return `<div class="arh-opt"><div class="arh-opt-t">${esc}</div>
+    return `<div class="arh-opt" data-kind="${kind}" data-idx="${idx}"><div class="arh-opt-t">${esc}</div>
       <div class="arh-optbtns">
         <button class="arh-use" data-txt="${enc}">Use</button>
         <button class="arh-copy" data-copy="${enc}">Copy</button>
+        <button class="arh-regen" title="Regenerate a different version">New one</button>
       </div></div>`;
   }
   function render(data) {
     results.innerHTML = `
-      <div class="arh-group">Public review</div>
-      ${data.public.map((t) => cardHTML(t)).join("")}
-      <div class="arh-group">Private note</div>
-      ${data.private.map((t) => cardHTML(t)).join("")}
+      <div class="arh-group">Public review <span class="arh-grouphint">(third person, for other hosts)</span></div>
+      ${data.public.map((t, i) => cardHTML(t, "public", i)).join("")}
+      <div class="arh-group">Private note <span class="arh-grouphint">(written to the guest)</span></div>
+      ${data.private.map((t, i) => cardHTML(t, "private", i)).join("")}
     `;
     results.querySelectorAll(".arh-copy").forEach((b) =>
       b.addEventListener("click", async () => {
@@ -724,6 +725,50 @@
         setTimeout(() => (b.textContent = "Use"), 1400);
       })
     );
+    results.querySelectorAll(".arh-regen").forEach((b) =>
+      b.addEventListener("click", () => regenOne(b)));
+  }
+
+  function currentPayload() {
+    return {
+      guest: $("#arh-guest").value.trim(),
+      context: $("#arh-context").value.trim(),
+      thread: toTranscript(threadTurns),
+      tone: $("#seg-tone").dataset.val,
+      lang: $("#seg-lang").dataset.val,
+      includeName: $("#arh-named").checked,
+      length: $("#seg-length").dataset.val,
+      ratings: {
+        overall: +$("#seg-overall").dataset.val,
+        communication: +$("#seg-communication").dataset.val,
+        cleanliness: +$("#seg-cleanliness").dataset.val,
+        rules: +$("#seg-rules").dataset.val
+      }
+    };
+  }
+
+  // Regenerate just one option, telling the model to differ from the others.
+  function regenOne(btn) {
+    const opt = btn.closest(".arh-opt");
+    if (!opt) return;
+    const kind = opt.dataset.kind, idx = +opt.dataset.idx;
+    const drafts = session.drafts || { public: [], private: [] };
+    const avoid = (drafts[kind] || []).filter((_, i) => i !== idx);
+    const orig = btn.textContent;
+    btn.textContent = "…"; btn.disabled = true;
+    chrome.runtime.sendMessage({ type: "generate", payload: { ...currentPayload(), single: kind, avoid } }, (resp) => {
+      btn.disabled = false; btn.textContent = orig;
+      if (chrome.runtime.lastError) return setStatus(chrome.runtime.lastError.message, true);
+      if (!resp || !resp.ok || !resp.text) return setStatus(resp && resp.error ? "Failed: " + resp.error : "Regenerate failed.", true);
+      opt.querySelector(".arh-opt-t").textContent = resp.text;
+      const enc = encodeURIComponent(resp.text);
+      opt.querySelector(".arh-use").dataset.txt = enc;
+      opt.querySelector(".arh-copy").dataset.copy = enc;
+      if (!session.drafts) session.drafts = { public: [], private: [] };
+      if (!Array.isArray(session.drafts[kind])) session.drafts[kind] = [];
+      session.drafts[kind][idx] = resp.text;
+      saveSession(session);
+    });
   }
 
   // Fill the current page's review textarea in a React-safe way.
@@ -758,21 +803,7 @@
   }
 
   $("#arh-gen").addEventListener("click", () => {
-    const payload = {
-      guest: $("#arh-guest").value.trim(),
-      context: $("#arh-context").value.trim(),
-      thread: toTranscript(threadTurns),
-      tone: $("#seg-tone").dataset.val,
-      lang: $("#seg-lang").dataset.val,
-      includeName: $("#arh-named").checked,
-      length: $("#seg-length").dataset.val,
-      ratings: {
-        overall: +$("#seg-overall").dataset.val,
-        communication: +$("#seg-communication").dataset.val,
-        cleanliness: +$("#seg-cleanliness").dataset.val,
-        rules: +$("#seg-rules").dataset.val
-      }
-    };
+    const payload = currentPayload();
     results.innerHTML = "";
     const gen = $("#arh-gen");
     gen.disabled = true;
