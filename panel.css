@@ -122,8 +122,28 @@ textarea.arh-in { resize: vertical; }
 .arh-mini-x { flex: 0 0 auto !important; }
 .arh-caphint { font-size: 11px; color: #FF385C; min-height: 14px; margin-bottom: 4px; }
 
+/* Apple-style thin, rounded, translucent scrollbars */
+#arh-card, .arh-card, .arh-chat { scrollbar-width: thin; scrollbar-color: rgba(0,0,0,.22) transparent; }
+#arh-card::-webkit-scrollbar,
+.arh-card::-webkit-scrollbar,
+.arh-chat::-webkit-scrollbar { width: 9px; height: 9px; }
+#arh-card::-webkit-scrollbar-track,
+.arh-card::-webkit-scrollbar-track,
+.arh-chat::-webkit-scrollbar-track { background: transparent; }
+#arh-card::-webkit-scrollbar-thumb,
+.arh-card::-webkit-scrollbar-thumb,
+.arh-chat::-webkit-scrollbar-thumb {
+  background: rgba(0,0,0,.22); border-radius: 999px;
+  border: 2px solid transparent; background-clip: content-box;
+}
+#arh-card::-webkit-scrollbar-thumb:hover,
+.arh-card::-webkit-scrollbar-thumb:hover,
+.arh-chat::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,.38); background-clip: content-box; }
+#arh-card::-webkit-scrollbar-corner,
+.arh-chat::-webkit-scrollbar-corner { background: transparent; }
+
 /* Conversation preview (chat bubbles) */
-.arh-chat { display: flex; flex-direction: column; gap: 6px; margin: 2px 0 8px; max-height: 230px; overflow-y: auto; padding: 2px; }
+.arh-chat { display: flex; flex-direction: column; gap: 6px; margin: 2px 0 8px; max-height: 230px; overflow-y: auto; overscroll-behavior: contain; padding: 2px; }
 .arh-bub { max-width: 86%; padding: 7px 10px; border-radius: 13px; font-size: 12px; line-height: 1.4; word-break: break-word; }
 .arh-bub.guest { align-self: flex-start; background: #f1f1f3; color: #222; border-bottom-left-radius: 4px; }
 .arh-bub.host { align-self: flex-end; background: #FF385C; color: #fff; border-bottom-right-radius: 4px; }
