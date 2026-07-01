@@ -333,7 +333,19 @@
       </div>
 
       <div class="arh-sec">
-        <div class="arh-sech">2 · How were they?</div>
+        <div class="arh-sech">2 · Conversation <span class="arh-sechhint">optional — makes the text more accurate</span></div>
+        <div class="arh-capbtns">
+          <button id="arh-readstep" class="arh-mini" type="button" title="Read your choices on this step">Read step</button>
+          <button id="arh-capture" class="arh-mini" type="button">Capture thread</button>
+          <button id="arh-clearctx" class="arh-mini arh-mini-x" type="button" title="Remove this guest">Clear</button>
+        </div>
+        <div id="arh-caphint" class="arh-caphint"></div>
+        <div id="arh-chat" class="arh-chat" hidden></div>
+        <textarea id="arh-context" class="arh-in" rows="3" placeholder="Extra notes for the model (optional)"></textarea>
+      </div>
+
+      <div class="arh-sec">
+        <div class="arh-sech">3 · How were they?</div>
         ${rows.map(([k, label, defIdx]) => `
           <div class="arh-rate">
             <span class="arh-ratel">${label}</span>
@@ -342,22 +354,10 @@
       </div>
 
       <div class="arh-sec">
-        <div class="arh-sech">3 · Style</div>
+        <div class="arh-sech">4 · Style</div>
         <div class="arh-field"><span class="arh-fl">Tone</span>${seg("seg-tone", TONES, 1)}</div>
         <div class="arh-field"><span class="arh-fl">Length</span>${seg("seg-length", LENS, 0)}</div>
         <div class="arh-field"><span class="arh-fl">Lang</span>${seg("seg-lang", LANGS, 0)}</div>
-      </div>
-
-      <div class="arh-sec">
-        <div class="arh-sech">4 · Source <span class="arh-sechhint">optional — makes the text more accurate</span></div>
-        <div class="arh-capbtns">
-          <button id="arh-readstep" class="arh-mini" type="button" title="Read your choices on this step">Read step</button>
-          <button id="arh-capture" class="arh-mini" type="button">Capture thread</button>
-          <button id="arh-clearctx" class="arh-mini arh-mini-x" type="button" title="Clear name, thread &amp; step choices">Clear</button>
-        </div>
-        <div id="arh-caphint" class="arh-caphint"></div>
-        <div id="arh-chat" class="arh-chat" hidden></div>
-        <textarea id="arh-context" class="arh-in" rows="3" placeholder="Extra notes for the model (optional)"></textarea>
       </div>
 
       <button id="arh-gen" class="arh-gen">Generate review</button>
@@ -445,8 +445,8 @@
     });
     $("#arh-clearall").addEventListener("click", async () => {
       try { await chrome.storage.local.remove(["arh_sessions", "arh_active"]); } catch {}
-      session = blankSession("");
-      $("#arh-guest").value = ""; $("#arh-context").value = "";
+      session = blankSession(scrapeGuest());
+      $("#arh-guest").value = session.guest || ""; $("#arh-context").value = "";
       renderChat([]); results.innerHTML = ""; renderChips({}, "");
       setCapHint("Removed all saved guests.");
     });
@@ -571,9 +571,9 @@
   // "Clear" removes just THIS guest's session (chips keep the rest).
   $("#arh-clearctx").addEventListener("click", async () => {
     await deleteSessionKey(keyOf(session.guest));
-    session = blankSession("");
+    session = blankSession(scrapeGuest());
     upsertFlowBlock(""); $("#arh-context").value = "";
-    $("#arh-guest").value = "";
+    $("#arh-guest").value = session.guest || "";
     renderChat([]); results.innerHTML = "";
     renderChips(await getSessions(), await getActiveKey());
     setCapHint("Removed this guest.");
@@ -583,7 +583,8 @@
     if (onMessages()) {
       const turns = scrapeThread();
       if (!turns.length) { setCapHint("No thread found to capture on this page."); return; }
-      if (!session.guest) session.guest = $("#arh-guest").value.trim() || scrapeGuest();
+      session.guest = $("#arh-guest").value.trim() || session.guest || scrapeGuest();
+      if (session.guest) $("#arh-guest").value = session.guest;
       session.turns = turns;
       renderChat(turns);
       await saveSession(session);
