@@ -15,6 +15,9 @@
   .hint { font-size: 11px; color: #888; margin-top: 12px; line-height: 1.45; }
   code { background: #f2f2f2; padding: 1px 4px; border-radius: 4px; }
   .row { display: flex; justify-content: space-between; font-size: 12px; }
+  .links { font-size: 12px; margin-top: 8px; }
+  .links a { color: #FF385C; text-decoration: none; font-weight: 600; }
+  .links a:hover { text-decoration: underline; }
 </style>
 </head>
 <body>
@@ -46,7 +49,12 @@
   <div class="ok" id="ok"></div>
 
   <div class="hint" id="privacy"></div>
-  <div class="hint">Open an Airbnb <code>/hosting/reviews/…</code> or message page, then click the pen button (bottom-right) to draft a review.</div>
+  <div class="hint">Look for the pink <b>pen button</b> at the bottom-right of any Airbnb page. Use the tabs at the top of the panel: <b>Review</b> (on a review or message page) and <b>Cleaning</b> (on your calendar).</div>
+  <div class="links">
+    <a href="https://www.airbnb.com/hosting/messages" target="_blank">Messages</a> ·
+    <a href="https://www.airbnb.com/multicalendar" target="_blank">Calendar</a> ·
+    <a href="https://www.airbnb.com/hosting/reviews" target="_blank">Reviews</a>
+  </div>
 
   <script src="popup.js"></script>
 </body>

@@ -19,12 +19,7 @@
   },
   "content_scripts": [
     {
-      "matches": [
-        "https://www.airbnb.com/hosting/reviews/*",
-        "https://www.airbnb.com/hosting/messages/*",
-        "https://www.airbnb.com/multicalendar/*",
-        "https://www.airbnb.com/calendar*"
-      ],
+      "matches": ["https://www.airbnb.com/*"],
       "js": ["content.js"],
       "css": ["panel.css"],
       "run_at": "document_idle"
