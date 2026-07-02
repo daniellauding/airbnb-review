@@ -380,6 +380,7 @@
       <div class="arh-nav">
         <button class="arh-navb on" data-view="review" type="button">Review</button>
         <button class="arh-navb" data-view="clean" type="button">Cleaning</button>
+        <button class="arh-navb" data-view="snip" type="button">Guest info</button>
       </div>
 
       <div id="arh-step" class="arh-step" hidden></div>
@@ -463,6 +464,7 @@
       <div class="arh-nav">
         <button class="arh-navb" data-view="review" type="button">Review</button>
         <button class="arh-navb on" data-view="clean" type="button">Cleaning</button>
+        <button class="arh-navb" data-view="snip" type="button">Guest info</button>
       </div>
       <div class="arh-step">Cleaning dates from your calendar → email your cleaner</div>
 
@@ -497,12 +499,41 @@
       <div id="arh-cstatus" class="arh-status"></div>
       <div id="arh-cout"></div>
     </div>
+
+    <div id="arh-snip" class="arh-card" hidden>
+      <div class="arh-head">
+        <strong>Airbnb Helper</strong>
+        <span class="arh-sp"></span>
+        <button id="arh-ngear" class="arh-icon" title="Settings" aria-label="Settings">${IC.cog}</button>
+        <button id="arh-nx" class="arh-icon" title="Close" aria-label="Close">${IC.x}</button>
+      </div>
+      <div class="arh-nav">
+        <button class="arh-navb" data-view="review" type="button">Review</button>
+        <button class="arh-navb" data-view="clean" type="button">Cleaning</button>
+        <button class="arh-navb on" data-view="snip" type="button">Guest info</button>
+      </div>
+      <div class="arh-step">Saved instructions — copy or drop into a guest message</div>
+      <div id="arh-snipchips" class="arh-snipchips"></div>
+      <div id="arh-snipeditor" hidden>
+        <input id="arh-sniptitle" class="arh-in" type="text" placeholder="Title (e.g. Check-in)" style="font-weight:600">
+        <textarea id="arh-snipbody" class="arh-in" rows="9" placeholder="The message text… (links, wifi, codes, recs — anything you paste a lot)"></textarea>
+        <div class="arh-field"><span class="arh-fl">Tone</span>${seg("seg-ntone", TONES, 1)}</div>
+        <div class="arh-optbtns" style="flex-wrap:wrap">
+          <button class="arh-use" id="arh-snipinsert" type="button">Insert</button>
+          <button class="arh-copy" id="arh-snipcopy" type="button">Copy</button>
+          <button class="arh-regen" id="arh-sniprewrite" type="button">Rewrite tone</button>
+          <button class="arh-mini arh-mini-x" id="arh-snipdel" type="button">Delete</button>
+        </div>
+        <div id="arh-snipstatus" class="arh-status"></div>
+      </div>
+    </div>
   `;
   document.body.appendChild(panel);
 
   const card = $("#arh-card");
   const settings = $("#arh-settings");
   const clean = $("#arh-clean");
+  const snip = $("#arh-snip");
   const statusEl = $("#arh-status");
   const results = $("#arh-results");
 
@@ -613,6 +644,8 @@
 
   async function openCard() {
     settings.hidden = true;
+    clean.hidden = true;
+    snip.hidden = true;
     card.hidden = false;
 
     // Pick the session for this page's guest; fall back to the active one.
@@ -667,8 +700,8 @@
   attachChipHandlers();
 
   $("#arh-fab").addEventListener("click", () => {
-    const isOpen = !card.hidden || !settings.hidden || !clean.hidden;
-    if (isOpen) { card.hidden = true; settings.hidden = true; clean.hidden = true; }
+    const isOpen = !card.hidden || !settings.hidden || !clean.hidden || !snip.hidden;
+    if (isOpen) { card.hidden = true; settings.hidden = true; clean.hidden = true; snip.hidden = true; }
     else if (onCalendar()) { openClean(); }
     else { openCard(); }
   });
@@ -703,7 +736,7 @@
     } });
   }
   function openClean() {
-    settings.hidden = true; card.hidden = true; clean.hidden = false;
+    settings.hidden = true; card.hidden = true; snip.hidden = true; clean.hidden = false;
     loadCleanPrefs().then(() => { if (cleanData.length) renderCleanList(cleanData); });
   }
 
@@ -807,10 +840,91 @@
   $("#arh-cx").addEventListener("click", () => (clean.hidden = true));
   $("#arh-cgear").addEventListener("click", () => { clean.hidden = true; loadSettings(); settings.hidden = false; });
 
-  // Nav tabs (present in both cards) switch between Review and Cleaning.
+  // Nav tabs switch between Review, Cleaning and Guest info.
   panel.querySelectorAll(".arh-navb").forEach((b) => b.addEventListener("click", () => {
-    if (b.dataset.view === "clean") openClean(); else openCard();
+    const v = b.dataset.view;
+    if (v === "clean") openClean(); else if (v === "snip") openSnip(); else openCard();
   }));
+
+  // ---------- Guest info snippets ----------
+  let snippets = [];   // [{ id, title, body }]
+  let snipSelId = null;
+  const uid = () => "s" + Math.random().toString(36).slice(2, 9);
+
+  async function loadSnippets() {
+    const { arh_snippets } = await chrome.storage.local.get("arh_snippets");
+    if (Array.isArray(arh_snippets)) { snippets = arh_snippets; return; }
+    // First run: seed a couple of starter templates the user can edit.
+    snippets = [
+      { id: uid(), title: "Check-in", body: "Welcome! 😊\n\n• Building code: #1213\n• Apartment: first door on the left\n• Key: in the mailbox slot on the door\n\nTo lock: lift the handle up, then turn the key. Message me anytime if anything is unclear!" },
+      { id: uid(), title: "WiFi", body: "WiFi\nNetwork: WiFiFiFan\nPassword: P@ssw0rd" }
+    ];
+    await saveSnippets();
+  }
+  function saveSnippets() { return chrome.storage.local.set({ arh_snippets: snippets }); }
+
+  function openSnip() {
+    settings.hidden = true; card.hidden = true; clean.hidden = true; snip.hidden = false;
+    loadSnippets().then(() => renderSnipChips());
+  }
+
+  function renderSnipChips() {
+    const box = $("#arh-snipchips");
+    box.innerHTML = snippets.map((s) =>
+      `<button class="arh-snipchip${s.id === snipSelId ? " on" : ""}" data-id="${s.id}" type="button">${escHTML(s.title || "Untitled")}</button>`
+    ).join("") + `<button class="arh-snipchip arh-snipnew" data-id="__new" type="button">+ New</button>`;
+    box.querySelectorAll(".arh-snipchip").forEach((b) => b.addEventListener("click", () => {
+      if (b.dataset.id === "__new") newSnippet(); else selectSnippet(b.dataset.id);
+    }));
+  }
+  function currentSnip() { return snippets.find((s) => s.id === snipSelId); }
+  function selectSnippet(id) {
+    snipSelId = id;
+    const s = currentSnip();
+    $("#arh-snipeditor").hidden = !s;
+    if (s) { $("#arh-sniptitle").value = s.title; $("#arh-snipbody").value = s.body; $("#arh-snipstatus").textContent = ""; }
+    renderSnipChips();
+  }
+  function newSnippet() {
+    const s = { id: uid(), title: "", body: "" };
+    snippets.push(s); saveSnippets();
+    selectSnippet(s.id);
+    $("#arh-sniptitle").focus();
+  }
+
+  $("#arh-sniptitle").addEventListener("input", () => { const s = currentSnip(); if (s) { s.title = $("#arh-sniptitle").value; saveSnippets(); renderSnipChips(); } });
+  $("#arh-snipbody").addEventListener("input", () => { const s = currentSnip(); if (s) { s.body = $("#arh-snipbody").value; saveSnippets(); } });
+
+  $("#arh-snipcopy").addEventListener("click", async (e) => {
+    await navigator.clipboard.writeText($("#arh-snipbody").value);
+    e.target.textContent = "Copied"; setTimeout(() => (e.target.textContent = "Copy"), 1200);
+  });
+  $("#arh-snipinsert").addEventListener("click", () => {
+    const ok = fillIntoPage($("#arh-snipbody").value);
+    $("#arh-snipstatus").textContent = ok ? "Inserted into the page." : "No text box focused — click a message box first, or use Copy.";
+  });
+  $("#arh-snipdel").addEventListener("click", async () => {
+    if (!currentSnip()) return;
+    snippets = snippets.filter((s) => s.id !== snipSelId);
+    await saveSnippets();
+    snipSelId = null; $("#arh-snipeditor").hidden = true;
+    renderSnipChips();
+  });
+  $("#arh-sniprewrite").addEventListener("click", () => {
+    const s = currentSnip();
+    if (!s || !$("#arh-snipbody").value.trim()) return;
+    const st = $("#arh-snipstatus");
+    st.innerHTML = '<span class="arh-spin"></span> Rewriting…';
+    chrome.runtime.sendMessage({ type: "rewrite", payload: { text: $("#arh-snipbody").value, tone: $("#seg-ntone").dataset.val } }, (resp) => {
+      if (chrome.runtime.lastError) { st.textContent = chrome.runtime.lastError.message; return; }
+      if (!resp || !resp.ok || !resp.text) { st.textContent = "Failed: " + (resp && resp.error ? resp.error : "no text"); return; }
+      $("#arh-snipbody").value = resp.text; s.body = resp.text; saveSnippets();
+      st.textContent = "Rewritten — edit or Copy.";
+    });
+  });
+
+  $("#arh-nx").addEventListener("click", () => (snip.hidden = true));
+  $("#arh-ngear").addEventListener("click", () => { snip.hidden = true; loadSettings(); settings.hidden = false; });
 
   $("#arh-readstep").addEventListener("click", async () => {
     const step = scrapeStep();
@@ -1066,8 +1180,8 @@
   }
   function findReviewField() {
     const active = document.activeElement;
-    if (active && /^(TEXTAREA|INPUT)$/.test(active.tagName) && !panel.contains(active)) return active;
-    const fields = [...document.querySelectorAll("textarea, input[type=text]")]
+    if (active && !panel.contains(active) && (/^(TEXTAREA|INPUT)$/.test(active.tagName) || active.isContentEditable)) return active;
+    const fields = [...document.querySelectorAll('textarea, input[type=text], [contenteditable="true"]')]
       .filter((el) => !panel.contains(el) && isVisible(el));
     fields.sort((a, b) => (a.tagName === "TEXTAREA" ? -1 : 1) - (b.tagName === "TEXTAREA" ? -1 : 1));
     return fields[0] || null;
@@ -1076,7 +1190,12 @@
     const el = findReviewField();
     if (!el) return false;
     el.focus();
-    setNativeValue(el, text);
+    if (el.isContentEditable) {
+      el.textContent = text;
+      el.dispatchEvent(new InputEvent("input", { bubbles: true }));
+    } else {
+      setNativeValue(el, text);
+    }
     el.scrollIntoView({ block: "center", behavior: "smooth" });
     return true;
   }

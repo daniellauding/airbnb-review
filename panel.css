@@ -167,6 +167,14 @@ textarea.arh-in { resize: vertical; }
 .arh-bub.host .arh-chatmore { color: #fff; }
 .arh-bub.guest .arh-chatmore { color: #FF385C; }
 
+/* Guest info snippets */
+.arh-snipchips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.arh-snipchip { border: 1px solid #ddd; background: #fff; color: #333; border-radius: 999px; padding: 5px 12px; font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
+.arh-snipchip:hover { border-color: #FF385C; color: #FF385C; }
+.arh-snipchip.on { background: #FF385C; color: #fff; border-color: #FF385C; }
+.arh-snipnew { border-style: dashed; color: #FF385C; }
+#arh-snipeditor textarea { white-space: pre-wrap; }
+
 /* Nav tabs (Review / Cleaning) */
 .arh-nav { display: flex; gap: 5px; background: #f2f2f2; padding: 3px; border-radius: 10px; margin-bottom: 12px; }
 .arh-navb { flex: 1; border: none; background: none; cursor: pointer; font: inherit; font-size: 13px; font-weight: 600; color: #666; padding: 7px; border-radius: 8px; }

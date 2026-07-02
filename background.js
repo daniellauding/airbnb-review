@@ -352,6 +352,32 @@ function buildCleaningEmail(p) {
   return [{ role: "system", content: sys }, { role: "user", content: user }];
 }
 
+// Rewrite an arbitrary snippet in a chosen tone, keeping facts/links/language.
+function buildRewrite(p) {
+  const tone = p.tone || "warm";
+  const sys = `Rewrite the user's text in a ${tone} tone. Keep the SAME language as the input, and keep every fact, link, address, code, wifi detail, emoji and line break. Do not add or remove information. Return ONLY the rewritten text, nothing else.`;
+  return [{ role: "system", content: sys }, { role: "user", content: String(p.text || "") }];
+}
+
+// Run a plain-text (non-JSON) generation across the configured endpoints.
+async function runPlain(messages) {
+  const settings = await getSettings();
+  const adapter = ADAPTERS[settings.provider] || callOllama;
+  const bases = settings.provider === "ollama"
+    ? settings.endpoints
+    : [settings.endpoints[0] || PROVIDER_BASE[settings.provider]].filter(Boolean);
+  const errors = [];
+  for (const base of bases) {
+    try {
+      const raw = await adapter({ base, model: settings.model, messages, temperature: settings.temperature, apiKey: settings.apiKey, plain: true });
+      const text = (raw || "").trim();
+      if (text) return { ok: true, text, used: { endpoint: base, model: settings.model } };
+      errors.push(`${base}: empty`);
+    } catch (e) { errors.push(`${base}: ${String(e.message || e)}`); }
+  }
+  return { ok: false, error: errors.join("  |  ") };
+}
+
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg.type === "ical") {
     (async () => {
@@ -365,24 +391,11 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     return true;
   }
   if (msg.type === "cleaningEmail") {
-    (async () => {
-      const settings = await getSettings();
-      const messages = buildCleaningEmail(msg.payload || {});
-      const adapter = ADAPTERS[settings.provider] || callOllama;
-      const bases = settings.provider === "ollama"
-        ? settings.endpoints
-        : [settings.endpoints[0] || PROVIDER_BASE[settings.provider]].filter(Boolean);
-      const errors = [];
-      for (const base of bases) {
-        try {
-          const raw = await adapter({ base, model: settings.model, messages, temperature: settings.temperature, apiKey: settings.apiKey, plain: true });
-          const text = (raw || "").trim();
-          if (text) return sendResponse({ ok: true, text, used: { endpoint: base, model: settings.model } });
-          errors.push(`${base}: empty`);
-        } catch (e) { errors.push(`${base}: ${String(e.message || e)}`); }
-      }
-      sendResponse({ ok: false, error: errors.join("  |  ") });
-    })();
+    runPlain(buildCleaningEmail(msg.payload || {})).then(sendResponse);
+    return true;
+  }
+  if (msg.type === "rewrite") {
+    runPlain(buildRewrite(msg.payload || {})).then(sendResponse);
     return true;
   }
 });
