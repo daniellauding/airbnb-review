@@ -167,9 +167,18 @@ textarea.arh-in { resize: vertical; }
 .arh-bub.host .arh-chatmore { color: #fff; }
 .arh-bub.guest .arh-chatmore { color: #FF385C; }
 
+/* Nav tabs (Review / Cleaning) */
+.arh-nav { display: flex; gap: 5px; background: #f2f2f2; padding: 3px; border-radius: 10px; margin-bottom: 12px; }
+.arh-navb { flex: 1; border: none; background: none; cursor: pointer; font: inherit; font-size: 13px; font-weight: 600; color: #666; padding: 7px; border-radius: 8px; }
+.arh-navb.on { background: #fff; color: #FF385C; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+
 /* Cleaning schedule list */
-#arh-clist { display: flex; flex-direction: column; gap: 4px; margin: 6px 0 4px; max-height: 260px; overflow-y: auto; }
-.arh-crow { font-size: 12px; color: #333; padding: 6px 9px; border: 1px solid #eee; border-radius: 8px; background: #fafafa; }
+#arh-clisthead { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+#arh-ccount { margin-left: auto; }
+#arh-clist { display: flex; flex-direction: column; gap: 3px; max-height: 300px; overflow-y: auto; }
+.arh-cmonth { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: #999; margin: 8px 0 3px; }
+.arh-crow { display: flex; align-items: flex-start; gap: 8px; font-size: 12px; color: #333; padding: 6px 9px; border: 1px solid #eee; border-radius: 8px; background: #fafafa; cursor: pointer; }
+.arh-crow input { accent-color: #FF385C; width: 15px; height: 15px; margin-top: 1px; flex: 0 0 auto; }
 .arh-crow.arh-csame { border-color: #ffd0d8; background: #fff5f7; }
 .arh-cnext { color: #888; font-size: 11px; }
 .arh-csame .arh-cnext { color: #c0143c; font-weight: 600; }

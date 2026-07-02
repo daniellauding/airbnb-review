@@ -348,7 +348,7 @@
         if (o.checkin >= r.checkout && (!next || o.checkin < next.checkin)) next = o;
       });
       const sameDay = !!next && next.checkin.getTime() === r.checkout.getTime();
-      return { clean: r.checkout, guest: r.name, next: next ? next.checkin : null, nextGuest: next ? next.name : "", sameDay };
+      return { checkin: r.checkin, clean: r.checkout, guest: r.name, next: next ? next.checkin : null, nextGuest: next ? next.name : "", sameDay };
     });
   }
 
@@ -363,6 +363,11 @@
         <span class="arh-sp"></span>
         <button id="arh-gear" class="arh-icon" title="Settings" aria-label="Settings">${IC.cog}</button>
         <button id="arh-x" class="arh-icon" title="Close" aria-label="Close">${IC.x}</button>
+      </div>
+
+      <div class="arh-nav">
+        <button class="arh-navb on" data-view="review" type="button">Review</button>
+        <button class="arh-navb" data-view="clean" type="button">Cleaning</button>
       </div>
 
       <div id="arh-step" class="arh-step" hidden></div>
@@ -438,20 +443,43 @@
 
     <div id="arh-clean" class="arh-card" hidden>
       <div class="arh-head">
-        <strong>Cleaning schedule</strong>
+        <strong>Airbnb Helper</strong>
         <span class="arh-sp"></span>
         <button id="arh-cgear" class="arh-icon" title="Settings" aria-label="Settings">${IC.cog}</button>
         <button id="arh-cx" class="arh-icon" title="Close" aria-label="Close">${IC.x}</button>
       </div>
-      <div class="arh-step">Read your calendar → cleaning dates + a ready-to-send email</div>
-      <div class="arh-capbtns">
-        <button id="arh-cread" class="arh-mini" type="button">Read calendar</button>
-        <button id="arh-cical" class="arh-mini" type="button" title="Fetch your iCal feed (set the URL in Settings)">Load from iCal</button>
+      <div class="arh-nav">
+        <button class="arh-navb" data-view="review" type="button">Review</button>
+        <button class="arh-navb on" data-view="clean" type="button">Cleaning</button>
       </div>
-      <div id="arh-chint" class="arh-caphint"></div>
-      <div class="arh-field"><span class="arh-fl">Time</span><input id="arh-ctime" class="arh-in" type="text" value="13:30" style="flex:1"></div>
-      <div class="arh-field"><span class="arh-fl">Lang</span>${seg("seg-clang", LANGS, 1)}</div>
-      <div id="arh-clist"></div>
+      <div class="arh-step">Cleaning dates from your calendar → email your cleaner</div>
+
+      <div class="arh-sec" style="border-top:none;padding-top:2px">
+        <div class="arh-sech">1 · Get dates</div>
+        <div class="arh-capbtns">
+          <button id="arh-cread" class="arh-mini" type="button">Read calendar</button>
+          <button id="arh-cical" class="arh-mini" type="button">Load from iCal</button>
+        </div>
+        <input id="arh-cicalurl" class="arh-in" type="text" placeholder="Optional: paste your Airbnb iCal URL (…/calendar/ical/….ics)" style="margin-top:6px">
+        <label class="arh-check"><input type="checkbox" id="arh-cupcoming" checked> Only upcoming dates</label>
+        <div id="arh-chint" class="arh-caphint"></div>
+      </div>
+
+      <div class="arh-sec">
+        <div class="arh-sech">2 · Pick dates</div>
+        <div id="arh-clisthead" class="arh-clisthead" hidden><label class="arh-check"><input type="checkbox" id="arh-call" checked> Select all</label><span id="arh-ccount" class="arh-sechhint"></span></div>
+        <div id="arh-clist"></div>
+      </div>
+
+      <div class="arh-sec">
+        <div class="arh-sech">3 · Email options</div>
+        <div class="arh-field"><span class="arh-fl">Time</span><input id="arh-ctime" class="arh-in" type="text" value="13:30" style="flex:1"></div>
+        <div class="arh-field"><span class="arh-fl">Same-day</span><input id="arh-ctime2" class="arh-in" type="text" value="11:00" style="flex:1"></div>
+        <div class="arh-field"><span class="arh-fl">Your name</span><input id="arh-cname" class="arh-in" type="text" placeholder="signs the email" style="flex:1"></div>
+        <div class="arh-field"><span class="arh-fl">Tone</span>${seg("seg-ctone", TONES, 1)}</div>
+        <div class="arh-field"><span class="arh-fl">Lang</span>${seg("seg-clang", LANGS, 1)}</div>
+      </div>
+
       <button id="arh-cmail" class="arh-gen" type="button" hidden>Draft cleaning email</button>
       <div id="arh-cstatus" class="arh-status"></div>
       <div id="arh-cout"></div>
@@ -636,79 +664,134 @@
   $("#arh-sx").addEventListener("click", () => { settings.hidden = true; if (onCalendar()) clean.hidden = false; else card.hidden = false; });
 
   // ---------- Cleaning schedule handlers ----------
-  let cleanData = [];
-  function openClean() { settings.hidden = true; card.hidden = true; clean.hidden = false; }
+  let cleanData = [];      // all cleaning slots
+  let visibleSlots = [];   // shown after the "upcoming" filter
   function setCleanHint(m) { $("#arh-chint").textContent = m || ""; }
+
+  async function loadCleanPrefs() {
+    const { arh_clean_prefs: p } = await chrome.storage.local.get("arh_clean_prefs");
+    if (!p) return;
+    if (p.time) $("#arh-ctime").value = p.time;
+    if (p.time2) $("#arh-ctime2").value = p.time2;
+    if (p.name) $("#arh-cname").value = p.name;
+    if (p.icalurl) $("#arh-cicalurl").value = p.icalurl;
+    if (typeof p.upcoming === "boolean") $("#arh-cupcoming").checked = p.upcoming;
+    if (p.tone) setSeg("seg-ctone", p.tone);
+    if (p.lang) setSeg("seg-clang", p.lang);
+  }
+  function saveCleanPrefs() {
+    chrome.storage.local.set({ arh_clean_prefs: {
+      time: $("#arh-ctime").value, time2: $("#arh-ctime2").value,
+      name: $("#arh-cname").value, icalurl: $("#arh-cicalurl").value,
+      upcoming: $("#arh-cupcoming").checked,
+      tone: $("#seg-ctone").dataset.val, lang: $("#seg-clang").dataset.val
+    } });
+  }
+  function openClean() {
+    settings.hidden = true; card.hidden = true; clean.hidden = false;
+    loadCleanPrefs().then(() => { if (cleanData.length) renderCleanList(cleanData); });
+  }
+
+  function updateCount() { $("#arh-ccount").textContent = `${clean.querySelectorAll(".arh-cchk:checked").length} selected`; }
 
   function renderCleanList(slots) {
     cleanData = slots;
-    const list = $("#arh-clist");
-    const mail = $("#arh-cmail");
-    if (!slots.length) { list.innerHTML = ""; mail.hidden = true; return; }
-    list.innerHTML = slots.map((s) => {
-      const nxt = s.next
-        ? ` <span class="arh-cnext">→ next in ${fmtDM(s.next)}${s.sameDay ? " · same-day!" : ""}</span>`
-        : ` <span class="arh-cnext">→ no next booking</span>`;
-      return `<div class="arh-crow${s.sameDay ? " arh-csame" : ""}"><b>${fmtDM(s.clean)}</b>${s.guest ? " · " + escHTML(s.guest) : ""}${nxt}</div>`;
-    }).join("");
-    mail.hidden = false;
+    const list = $("#arh-clist"), head = $("#arh-clisthead"), mail = $("#arh-cmail");
+    if (!slots.length) { list.innerHTML = ""; head.hidden = true; mail.hidden = true; return; }
+    const upcoming = $("#arh-cupcoming").checked;
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    visibleSlots = slots.filter((s) => !upcoming || s.clean >= today);
+    if (!visibleSlots.length) { list.innerHTML = '<div class="arh-caphint">No upcoming cleaning days.</div>'; head.hidden = true; mail.hidden = true; return; }
+    const locale = $("#seg-clang").dataset.val === "sv" ? "sv-SE" : "en-US";
+    const groups = {};
+    visibleSlots.forEach((s, i) => { const k = s.clean.toLocaleString(locale, { month: "long", year: "numeric" }); (groups[k] = groups[k] || []).push({ s, i }); });
+    list.innerHTML = Object.entries(groups).map(([month, items]) =>
+      `<div class="arh-cmonth">${month}</div>` + items.map(({ s, i }) => {
+        const range = `${fmtDM(s.checkin)}–${fmtDM(s.clean)}`;
+        const nxt = s.next ? `next ${fmtDM(s.next)}${s.sameDay ? " · same-day" : ""}` : "last booking";
+        return `<label class="arh-crow${s.sameDay ? " arh-csame" : ""}"><input type="checkbox" class="arh-cchk" data-i="${i}" checked><span><b>${fmtDM(s.clean)}</b>${s.guest ? " · " + escHTML(s.guest) : ""} <span class="arh-cnext">${range} → ${nxt}</span></span></label>`;
+      }).join("")
+    ).join("");
+    $("#arh-call").checked = true;
+    head.hidden = false; mail.hidden = false;
+    updateCount();
   }
+
+  $("#arh-clist").addEventListener("change", updateCount);
+  $("#arh-call").addEventListener("change", (e) => {
+    clean.querySelectorAll(".arh-cchk").forEach((c) => (c.checked = e.target.checked));
+    updateCount();
+  });
+  $("#arh-cupcoming").addEventListener("change", () => { saveCleanPrefs(); if (cleanData.length) renderCleanList(cleanData); });
 
   $("#arh-cread").addEventListener("click", () => {
     const res = scrapeReservations();
-    if (!res.length) { setCleanHint("No reservations found. Open the year view on /multicalendar and scroll so bookings render, then try again."); renderCleanList([]); return; }
-    const slots = cleaningSlots(res);
-    setCleanHint(`Found ${res.length} bookings → ${slots.length} cleaning days.`);
-    renderCleanList(slots);
+    if (!res.length) { setCleanHint("No reservations found. Open the Year view on /multicalendar and scroll so bookings render, then try again."); renderCleanList([]); return; }
+    setCleanHint(`Found ${res.length} bookings.`);
+    renderCleanList(cleaningSlots(res));
   });
 
   $("#arh-cical").addEventListener("click", async () => {
-    const { arh_ical } = await chrome.storage.local.get("arh_ical");
-    if (!arh_ical) { setCleanHint("No iCal URL saved. Add it in Settings (gear icon)."); return; }
+    const url = $("#arh-cicalurl").value.trim() || (await chrome.storage.local.get("arh_ical")).arh_ical;
+    if (!url) { setCleanHint("Paste your Airbnb iCal URL above first."); return; }
+    saveCleanPrefs();
     setCleanHint("Fetching iCal…");
-    chrome.runtime.sendMessage({ type: "ical", url: arh_ical }, (resp) => {
+    chrome.runtime.sendMessage({ type: "ical", url }, (resp) => {
       if (chrome.runtime.lastError) return setCleanHint(chrome.runtime.lastError.message);
       if (!resp || !resp.ok) return setCleanHint("iCal failed: " + (resp && resp.error ? resp.error : "unknown"));
       const res = (resp.events || []).map((e) => ({ checkin: new Date(e.start), checkout: new Date(e.end), name: e.name || "" }))
-        .filter((r) => !isNaN(r.checkin) && !isNaN(r.checkout))
-        .sort((a, b) => a.checkout - b.checkout);
+        .filter((r) => !isNaN(r.checkin) && !isNaN(r.checkout)).sort((a, b) => a.checkout - b.checkout);
       if (!res.length) { setCleanHint("iCal had no reservations."); return renderCleanList([]); }
-      const slots = cleaningSlots(res);
-      setCleanHint(`iCal: ${res.length} bookings → ${slots.length} cleaning days. (Airbnb iCal has no guest names.)`);
-      renderCleanList(slots);
+      setCleanHint(`iCal: ${res.length} bookings. (Airbnb iCal has no guest names.)`);
+      renderCleanList(cleaningSlots(res));
     });
   });
 
-  $("#arh-cmail").addEventListener("click", () => {
-    if (!cleanData.length) return;
+  // Build the email from the CHECKED dates only; the date list is assembled here
+  // (single source of truth) so the model can't mangle dates or same-day flags.
+  function draftCleaningEmail() {
+    const chosen = [...clean.querySelectorAll(".arh-cchk:checked")].map((c) => visibleSlots[+c.dataset.i]).filter(Boolean);
+    const cstat = $("#arh-cstatus"), cout = $("#arh-cout");
+    if (!chosen.length) { cstat.textContent = "Pick at least one date first."; return; }
+    saveCleanPrefs();
     const lang = $("#seg-clang").dataset.val;
-    const defTime = ($("#arh-ctime").value || "13:30").trim();
-    const cstat = $("#arh-cstatus");
-    const cout = $("#arh-cout");
-    const payload = {
-      lang, defTime,
-      slots: cleanData.map((s) => ({
-        clean: fmtDM(s.clean), guest: s.guest || "",
-        next: s.next ? fmtDM(s.next) : "", sameDay: s.sameDay
-      }))
-    };
-    cstat.innerHTML = '<span class="arh-spin"></span> Drafting email…';
+    const t1 = ($("#arh-ctime").value || "13:30").trim();
+    const t2 = ($("#arh-ctime2").value || t1).trim();
+    const lines = chosen.map((s) => {
+      const t = s.sameDay ? t2 : t1;
+      const note = s.sameDay
+        ? (lang === "sv" ? ` (samma dag – gäst ut ${fmtDM(s.clean)}, ny in ${fmtDM(s.next)})` : ` (same day – out ${fmtDM(s.clean)}, in ${fmtDM(s.next)})`)
+        : "";
+      return `- ${fmtDM(s.clean)} kl. ${t}${note}`;
+    });
+    const payload = { lang, tone: $("#seg-ctone").dataset.val, name: $("#arh-cname").value.trim(), lines };
+    cout.innerHTML = '<div class="arh-opt"><div class="arh-opt-t"><span class="arh-sk"></span><span class="arh-sk"></span><span class="arh-sk"></span><span class="arh-sk arh-sk-2"></span></div></div>';
+    cstat.innerHTML = '<span class="arh-spin"></span> Writing the email…';
     chrome.runtime.sendMessage({ type: "cleaningEmail", payload }, (resp) => {
-      if (chrome.runtime.lastError) { cstat.textContent = chrome.runtime.lastError.message; return; }
-      if (!resp || !resp.ok || !resp.text) { cstat.textContent = "Failed: " + (resp && resp.error ? resp.error : "no text"); return; }
-      cstat.textContent = "";
-      const enc = encodeURIComponent(resp.text);
-      cout.innerHTML = `<div class="arh-opt"><div class="arh-opt-t">${escHTML(resp.text)}</div>
-        <div class="arh-optbtns"><button class="arh-copy" data-copy="${enc}">Copy</button></div></div>`;
-      cout.querySelector(".arh-copy").addEventListener("click", async (e) => {
-        await navigator.clipboard.writeText(decodeURIComponent(e.target.dataset.copy));
+      if (chrome.runtime.lastError) { cstat.textContent = chrome.runtime.lastError.message; cout.innerHTML = ""; return; }
+      if (!resp || !resp.ok || !resp.text) { cstat.textContent = "Failed: " + (resp && resp.error ? resp.error : "no text"); cout.innerHTML = ""; return; }
+      cstat.textContent = "Draft ready — edit it below before copying.";
+      cout.innerHTML = `<textarea id="arh-cmailtext" class="arh-in" rows="12"></textarea>
+        <div class="arh-optbtns"><button class="arh-use" id="arh-cmailcopy">Copy</button><button class="arh-regen" id="arh-cmailregen">Regenerate</button></div>`;
+      $("#arh-cmailtext").value = resp.text;
+      $("#arh-cmailcopy").addEventListener("click", async (e) => {
+        await navigator.clipboard.writeText($("#arh-cmailtext").value);
         e.target.textContent = "Copied"; setTimeout(() => (e.target.textContent = "Copy"), 1200);
       });
+      $("#arh-cmailregen").addEventListener("click", draftCleaningEmail);
     });
-  });
+  }
+  $("#arh-cmail").addEventListener("click", draftCleaningEmail);
+
+  ["arh-ctime", "arh-ctime2", "arh-cname", "arh-cicalurl"].forEach((id) => $("#" + id).addEventListener("change", saveCleanPrefs));
 
   $("#arh-cx").addEventListener("click", () => (clean.hidden = true));
   $("#arh-cgear").addEventListener("click", () => { clean.hidden = true; loadSettings(); settings.hidden = false; });
+
+  // Nav tabs (present in both cards) switch between Review and Cleaning.
+  panel.querySelectorAll(".arh-navb").forEach((b) => b.addEventListener("click", () => {
+    if (b.dataset.view === "clean") openClean(); else openCard();
+  }));
 
   $("#arh-readstep").addEventListener("click", async () => {
     const step = scrapeStep();
@@ -755,7 +838,7 @@
   });
 
   // Segmented controls: click a pill to select; value stored on the wrapper's data-val.
-  card.addEventListener("click", (e) => {
+  panel.addEventListener("click", (e) => {
     const b = e.target.closest(".arh-segb");
     if (!b) return;
     const wrap = b.parentElement;
@@ -763,6 +846,12 @@
     b.classList.add("on");
     wrap.dataset.val = b.dataset.val;
   });
+  function setSeg(id, val) {
+    const wrap = $("#" + id);
+    if (!wrap) return;
+    wrap.querySelectorAll(".arh-segb").forEach((x) => x.classList.toggle("on", x.dataset.val === val));
+    wrap.dataset.val = val;
+  }
 
   // Renaming the guest re-keys this session (so chips follow the name).
   $("#arh-guest").addEventListener("change", async (e) => {

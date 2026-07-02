@@ -332,23 +332,23 @@ function parseICal(text) {
   return events;
 }
 
+// The date list is pre-formatted by the content script (single source of truth);
+// the model must reproduce it verbatim and only write the wrapper text.
 function buildCleaningEmail(p) {
   const lang = p.lang === "sv" ? "sv" : "en";
-  const time = (p.defTime || "13:30").trim();
-  const lines = (p.slots || []).map((s) => {
-    const nx = s.next
-      ? (lang === "sv" ? ` (nästa gäst in ${s.next}${s.sameDay ? " — SAMMA DAG, städ på förmiddagen" : ""})`
-        : ` (next guest in ${s.next}${s.sameDay ? " — SAME DAY, morning clean" : ""})`)
-      : "";
-    const who = s.guest ? ` [${s.guest}]` : "";
-    return `- ${s.clean} kl. ${time}${nx}${who}`;
-  }).join("\n");
+  const tone = p.tone || "warm";
+  const name = (p.name || "").trim();
+  const list = (p.lines || []).join("\n");
+  const toneSv = tone === "playful" ? "lättsamt" : tone === "neutral" ? "sakligt" : "vänligt";
+  const sign = lang === "sv"
+    ? (name ? `Signera med "${name}".` : `Avsluta med "Mvh" — hitta INTE på något namn.`)
+    : (name ? `Sign off with "${name}".` : `End with "Thanks" — do NOT invent a name.`);
   const sys = lang === "sv"
-    ? "Du skriver ett kort, vänligt och tydligt mejl på svenska från en Airbnb-värd till sitt städföretag för att boka städtider. Behåll ALLA datum i listan — sammanfatta inte bort dem. Returnera ENDAST mejltexten (ämnesrad + brödtext), inga förklaringar."
-    : "You write a short, friendly, clear email in English from an Airbnb host to their cleaning company to book cleaning slots. Keep EVERY date in the list — do not summarise them away. Return ONLY the email text (subject line + body), no explanations.";
+    ? `Du skriver ett kort, ${toneSv} mejl på svenska från en Airbnb-värd till städföretaget för att boka städtider. Behåll datumlistan EXAKT som given — ändra inte datum/tider och lägg INTE till eller ta bort "(samma dag)"-markeringar. ${sign} Returnera ENDAST mejltexten (ämnesrad + brödtext), inga förklaringar.`
+    : `You write a short, ${tone} email in English from an Airbnb host to their cleaning company to book cleaning times. Keep the date list EXACTLY as given — do not change dates/times and do NOT add or remove "(same day)" markers. ${sign} Return ONLY the email text (subject + body), no explanations.`;
   const user = lang === "sv"
-    ? `Standardtid om inget annat anges: ${time}. Föreslagna städtider (städ sker på utcheckningsdagen):\n${lines}\n\nSkriv mejlet: kort hälsning, be dem boka/bekräfta dessa tider, och flagga tydligt de som är SAMMA DAG (gäst ut och ny in samma dag) eftersom de är tighta.`
-    : `Default time unless noted: ${time}. Proposed cleaning slots (cleaning happens on the checkout day):\n${lines}\n\nWrite the email: brief greeting, ask them to book/confirm these, and clearly flag the SAME DAY ones (guest out and new guest in on the same day) as tight turnarounds.`;
+    ? `Städtider (behåll raderna oförändrade):\n${list}\n\nSkriv mejlet runt listan: kort hälsning, be dem boka/bekräfta tiderna. Rader med "(samma dag)" är tighta turnarounds.`
+    : `Cleaning times (keep the lines unchanged):\n${list}\n\nWrite the email around this list: brief greeting, ask them to book/confirm the times. Lines marked "(same day)" are tight turnarounds.`;
   return [{ role: "system", content: sys }, { role: "user", content: user }];
 }
 
