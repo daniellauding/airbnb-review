@@ -313,6 +313,18 @@
 
   // ---------- Cleaning schedule (calendar page) ----------
   const fmtDM = (d) => `${d.getDate()}/${d.getMonth() + 1}`;
+  const SV_MONTHS = { jan: 1, feb: 2, mar: 3, apr: 4, maj: 5, jun: 6, jul: 7, aug: 8, sep: 9, okt: 10, nov: 11, dec: 12, may: 5, oct: 10, dec2: 12 };
+  // Parse free-typed "already booked" dates into a Set of "d/m" strings.
+  function parseBookedDates(text) {
+    const set = new Set();
+    if (!text) return set;
+    [...text.matchAll(/\b(\d{1,2})\s*\/\s*(\d{1,2})\b/g)].forEach((m) => set.add(`${+m[1]}/${+m[2]}`));
+    [...text.matchAll(/\b(\d{1,2})\s+([a-zåäö]{3,})/gi)].forEach((m) => {
+      const mo = SV_MONTHS[m[2].slice(0, 3).toLowerCase()];
+      if (mo) set.add(`${+m[1]}/${mo}`);
+    });
+    return set;
+  }
 
   // Scrape reservations off the multicalendar DOM (no URL needed).
   // Each reservation bar carries an aria-label like
@@ -462,6 +474,7 @@
         </div>
         <input id="arh-cicalurl" class="arh-in" type="text" placeholder="Optional: paste your Airbnb iCal URL (…/calendar/ical/….ics)" style="margin-top:6px">
         <label class="arh-check"><input type="checkbox" id="arh-cupcoming" checked> Only upcoming dates</label>
+        <textarea id="arh-cbooked" class="arh-in" rows="2" placeholder="Already booked with your cleaner? Paste those dates (e.g. 11/6, 17/6, 5 aug) — they’ll be marked booked and left out of the email." style="margin-top:6px"></textarea>
         <div id="arh-chint" class="arh-caphint"></div>
       </div>
 
@@ -675,6 +688,7 @@
     if (p.time2) $("#arh-ctime2").value = p.time2;
     if (p.name) $("#arh-cname").value = p.name;
     if (p.icalurl) $("#arh-cicalurl").value = p.icalurl;
+    if (p.booked) $("#arh-cbooked").value = p.booked;
     if (typeof p.upcoming === "boolean") $("#arh-cupcoming").checked = p.upcoming;
     if (p.tone) setSeg("seg-ctone", p.tone);
     if (p.lang) setSeg("seg-clang", p.lang);
@@ -683,6 +697,7 @@
     chrome.storage.local.set({ arh_clean_prefs: {
       time: $("#arh-ctime").value, time2: $("#arh-ctime2").value,
       name: $("#arh-cname").value, icalurl: $("#arh-cicalurl").value,
+      booked: $("#arh-cbooked").value,
       upcoming: $("#arh-cupcoming").checked,
       tone: $("#seg-ctone").dataset.val, lang: $("#seg-clang").dataset.val
     } });
@@ -702,6 +717,7 @@
     const today = new Date(); today.setHours(0, 0, 0, 0);
     visibleSlots = slots.filter((s) => !upcoming || s.clean >= today);
     if (!visibleSlots.length) { list.innerHTML = '<div class="arh-caphint">No upcoming cleaning days.</div>'; head.hidden = true; mail.hidden = true; return; }
+    const bookedSet = parseBookedDates($("#arh-cbooked").value);
     const locale = $("#seg-clang").dataset.val === "sv" ? "sv-SE" : "en-US";
     const groups = {};
     visibleSlots.forEach((s, i) => { const k = s.clean.toLocaleString(locale, { month: "long", year: "numeric" }); (groups[k] = groups[k] || []).push({ s, i }); });
@@ -709,10 +725,12 @@
       `<div class="arh-cmonth">${month}</div>` + items.map(({ s, i }) => {
         const range = `${fmtDM(s.checkin)}–${fmtDM(s.clean)}`;
         const nxt = s.next ? `next ${fmtDM(s.next)}${s.sameDay ? " · same-day" : ""}` : "last booking";
-        return `<label class="arh-crow${s.sameDay ? " arh-csame" : ""}"><input type="checkbox" class="arh-cchk" data-i="${i}" checked><span><b>${fmtDM(s.clean)}</b>${s.guest ? " · " + escHTML(s.guest) : ""} <span class="arh-cnext">${range} → ${nxt}</span></span></label>`;
+        const booked = bookedSet.has(fmtDM(s.clean));
+        const badge = booked ? ' <span class="arh-cbadge">booked</span>' : "";
+        return `<label class="arh-crow${s.sameDay ? " arh-csame" : ""}${booked ? " arh-crowbooked" : ""}"><input type="checkbox" class="arh-cchk" data-i="${i}"${booked ? "" : " checked"}><span><b>${fmtDM(s.clean)}</b>${badge}${s.guest ? " · " + escHTML(s.guest) : ""} <span class="arh-cnext">${range} → ${nxt}</span></span></label>`;
       }).join("")
     ).join("");
-    $("#arh-call").checked = true;
+    $("#arh-call").checked = !clean.querySelector(".arh-cchk:not(:checked)");
     head.hidden = false; mail.hidden = false;
     updateCount();
   }
@@ -723,6 +741,7 @@
     updateCount();
   });
   $("#arh-cupcoming").addEventListener("change", () => { saveCleanPrefs(); if (cleanData.length) renderCleanList(cleanData); });
+  $("#arh-cbooked").addEventListener("input", () => { saveCleanPrefs(); if (cleanData.length) renderCleanList(cleanData); });
 
   $("#arh-cread").addEventListener("click", () => {
     const res = scrapeReservations();

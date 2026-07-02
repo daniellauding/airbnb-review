@@ -182,6 +182,8 @@ textarea.arh-in { resize: vertical; }
 .arh-crow.arh-csame { border-color: #ffd0d8; background: #fff5f7; }
 .arh-cnext { color: #888; font-size: 11px; }
 .arh-csame .arh-cnext { color: #c0143c; font-weight: 600; }
+.arh-crowbooked { opacity: .6; }
+.arh-cbadge { display: inline-block; font-size: 10px; font-weight: 700; color: #1a7f37; background: #e6f4ea; border-radius: 999px; padding: 1px 7px; vertical-align: 1px; }
 
 .arh-hint { font-size: 11px; color: #888; margin-top: 10px; line-height: 1.4; }
 .arh-hint code { background: #f2f2f2; padding: 1px 4px; border-radius: 4px; }
